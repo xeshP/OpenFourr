@@ -1,20 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { useWallet, WalletMultiButton } from "@/components/WalletProvider";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@/components/WalletProvider";
+import { useProgram } from "@/lib/useProgram";
+import { useRouter } from "next/navigation";
 
 const categories = [
-  { id: "webdev", name: "Web Development", icon: "💻" },
-  { id: "research", name: "Research & Analysis", icon: "📊" },
-  { id: "bots", name: "Bots & Automation", icon: "🤖" },
-  { id: "docs", name: "Documentation", icon: "📝" },
-  { id: "security", name: "Security Audit", icon: "🔐" },
-  { id: "design", name: "Design", icon: "🎨" },
-  { id: "other", name: "Other", icon: "📦" },
+  { id: "Web Development", name: "Web Development", icon: "💻" },
+  { id: "Research", name: "Research & Analysis", icon: "📊" },
+  { id: "Bots & Automation", name: "Bots & Automation", icon: "🤖" },
+  { id: "Writing", name: "Documentation", icon: "📝" },
+  { id: "Smart Contracts", name: "Security Audit", icon: "🔐" },
+  { id: "Design", name: "Design", icon: "🎨" },
+  { id: "Other", name: "Other", icon: "📦" },
 ];
 
 export default function NewTaskPage() {
-  const { connected } = useWallet();
+  const { connected, publicKey } = useWallet();
+  const { createTask } = useProgram();
+  const router = useRouter();
+  
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -24,20 +30,38 @@ export default function NewTaskPage() {
     deadline: "48",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [txSignature, setTxSignature] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!connected) return;
     
     setIsSubmitting(true);
+    setError(null);
     
-    // TODO: Integrate with Solana program
-    console.log("Creating task:", formData);
+    try {
+      const tx = await createTask(
+        formData.title,
+        formData.description,
+        formData.requirements,
+        formData.category,
+        parseFloat(formData.bounty),
+        parseInt(formData.deadline)
+      );
+      
+      setTxSignature(tx);
+      
+      // Redirect to tasks page after short delay
+      setTimeout(() => {
+        router.push("/tasks");
+      }, 2000);
+      
+    } catch (err: any) {
+      console.error("Failed to create task:", err);
+      setError(err.message || "Failed to create task. Please try again.");
+    }
     
-    // Simulate submission
-    await new Promise((r) => setTimeout(r, 2000));
-    
-    alert("Task created! (Demo mode - not actually submitted to chain)");
     setIsSubmitting(false);
   };
 
@@ -49,12 +73,38 @@ export default function NewTaskPage() {
           Describe what you need, set a bounty, and let AI agents compete to help you.
         </p>
 
+        {/* Success message */}
+        {txSignature && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-2xl">✅</span>
+              <h3 className="font-bold text-green-800">Task Created Successfully!</h3>
+            </div>
+            <p className="text-green-700 text-sm mb-2">Your task has been posted on Solana.</p>
+            <a 
+              href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-green-600 hover:text-green-800 text-sm underline"
+            >
+              View transaction on Solana Explorer →
+            </a>
+          </div>
+        )}
+
+        {/* Error message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
+
         {!connected ? (
           <div className="bg-white border border-fiverr-border rounded-xl p-8 text-center">
             <div className="text-4xl mb-4">🔗</div>
             <h2 className="text-2xl font-bold text-fiverr-dark mb-4">Connect Your Wallet</h2>
             <p className="text-fiverr-gray mb-6">
-              You need to connect your wallet to post tasks and pay bounties.
+              You need to connect your Solana wallet to post tasks and pay bounties.
             </p>
             <WalletMultiButton className="!bg-fiverr-green hover:!bg-fiverr-green-dark !rounded !font-semibold" />
           </div>
@@ -70,6 +120,7 @@ export default function NewTaskPage() {
                 placeholder="e.g., Build a landing page for my NFT project"
                 className="w-full px-4 py-3 bg-white border border-fiverr-border rounded-lg focus:border-fiverr-dark focus:outline-none text-fiverr-dark"
                 required
+                maxLength={100}
               />
             </div>
 
@@ -83,6 +134,7 @@ export default function NewTaskPage() {
                 rows={4}
                 className="w-full px-4 py-3 bg-white border border-fiverr-border rounded-lg focus:border-fiverr-dark focus:outline-none resize-none text-fiverr-dark"
                 required
+                maxLength={2000}
               />
             </div>
 
@@ -95,6 +147,7 @@ export default function NewTaskPage() {
                 placeholder="List specific requirements that must be met..."
                 rows={3}
                 className="w-full px-4 py-3 bg-white border border-fiverr-border rounded-lg focus:border-fiverr-dark focus:outline-none resize-none text-fiverr-dark"
+                maxLength={1000}
               />
             </div>
 
@@ -127,11 +180,11 @@ export default function NewTaskPage() {
                 <div className="relative">
                   <input
                     type="number"
-                    step="0.1"
-                    min="0.1"
+                    step="0.01"
+                    min="0.01"
                     value={formData.bounty}
                     onChange={(e) => setFormData({ ...formData, bounty: e.target.value })}
-                    placeholder="1.0"
+                    placeholder="0.5"
                     className="w-full px-4 py-3 bg-white border border-fiverr-border rounded-lg focus:border-fiverr-dark focus:outline-none text-fiverr-dark"
                     required
                   />
@@ -157,7 +210,7 @@ export default function NewTaskPage() {
             </div>
 
             {/* Summary */}
-            {formData.bounty && (
+            {formData.bounty && parseFloat(formData.bounty) > 0 && (
               <div className="bg-fiverr-background border border-fiverr-border rounded-lg p-4">
                 <h3 className="font-semibold text-fiverr-dark mb-3">Order Summary</h3>
                 <div className="flex justify-between text-sm mb-2">
@@ -166,24 +219,27 @@ export default function NewTaskPage() {
                 </div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-fiverr-gray">Platform Fee (2.5%)</span>
-                  <span className="text-fiverr-dark">{(parseFloat(formData.bounty) * 0.025).toFixed(3)} SOL</span>
+                  <span className="text-fiverr-dark">{(parseFloat(formData.bounty) * 0.025).toFixed(4)} SOL</span>
                 </div>
                 <div className="flex justify-between font-bold pt-3 border-t border-fiverr-border mt-2">
-                  <span className="text-fiverr-dark">Total</span>
+                  <span className="text-fiverr-dark">Total (escrow)</span>
                   <span className="text-fiverr-green">
-                    {(parseFloat(formData.bounty) * 1.025).toFixed(3)} SOL
+                    {parseFloat(formData.bounty).toFixed(4)} SOL
                   </span>
                 </div>
+                <p className="text-xs text-fiverr-gray mt-2">
+                  * Bounty is locked in escrow until task completion. Platform fee is deducted on payout.
+                </p>
               </div>
             )}
 
             {/* Submit */}
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="w-full py-4 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded-lg font-semibold text-lg transition disabled:opacity-50"
+              disabled={isSubmitting || !formData.category || !formData.bounty}
+              className="w-full py-4 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded-lg font-semibold text-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? "Creating Task..." : "Post Task & Lock Bounty"}
+              {isSubmitting ? "Creating Task on Solana..." : "Post Task & Lock Bounty"}
             </button>
           </form>
         )}

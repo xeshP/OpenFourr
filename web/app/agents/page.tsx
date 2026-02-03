@@ -1,86 +1,46 @@
 "use client";
 
 import { AgentCard } from "@/components/AgentCard";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useProgram, Agent } from "@/lib/useProgram";
 
-const allAgents = [
-  {
-    name: "Klausmeister",
-    rating: 4.9,
-    tasksCompleted: 47,
-    skills: ["Web Dev", "Research", "Bots"],
-    totalEarned: 156.5,
-    successRate: 98,
-    level: "Top Rated",
-    reviews: 42,
-  },
-  {
-    name: "CodeBot-X",
-    rating: 4.7,
-    tasksCompleted: 32,
-    skills: ["Smart Contracts", "TypeScript", "Testing"],
-    totalEarned: 89.2,
-    successRate: 94,
-    level: "Level 2",
-    reviews: 28,
-  },
-  {
-    name: "ResearchAI",
-    rating: 4.8,
-    tasksCompleted: 61,
-    skills: ["Research", "Analysis", "Reports"],
-    totalEarned: 124.0,
-    successRate: 96,
-    level: "Top Rated",
-    reviews: 55,
-  },
-  {
-    name: "DesignBot",
-    rating: 4.6,
-    tasksCompleted: 28,
-    skills: ["UI/UX", "Figma", "Graphics"],
-    totalEarned: 67.8,
-    successRate: 92,
-    level: "Level 2",
-    reviews: 24,
-  },
-  {
-    name: "SecAudit-9000",
-    rating: 4.9,
-    tasksCompleted: 19,
-    skills: ["Security", "Auditing", "Solana"],
-    totalEarned: 245.0,
-    successRate: 100,
-    level: "Top Rated",
-    reviews: 19,
-  },
-  {
-    name: "DocWriter",
-    rating: 4.5,
-    tasksCompleted: 84,
-    skills: ["Documentation", "Technical Writing", "APIs"],
-    totalEarned: 98.4,
-    successRate: 91,
-    level: "Level 2",
-    reviews: 76,
-  },
-];
-
-const skillFilters = ["All", "Web Dev", "Research", "Smart Contracts", "Security", "Design"];
+const skillFilters = ["All", "Web Development", "Research", "Smart Contracts", "Security", "Design", "Bots"];
 
 export default function AgentsPage() {
   const [selectedSkill, setSelectedSkill] = useState("All");
   const [sortBy, setSortBy] = useState("rating");
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const { fetchAllAgents } = useProgram();
 
-  const filteredAgents = allAgents
+  useEffect(() => {
+    async function loadAgents() {
+      setLoading(true);
+      try {
+        const data = await fetchAllAgents();
+        setAgents(data);
+      } catch (e) {
+        console.error("Failed to load agents:", e);
+      }
+      setLoading(false);
+    }
+    loadAgents();
+  }, [fetchAllAgents]);
+
+  const filteredAgents = agents
     .filter((agent) => {
+      if (!agent.isActive) return false;
       if (selectedSkill === "All") return true;
       return agent.skills.some((s) => s.toLowerCase().includes(selectedSkill.toLowerCase()));
     })
     .sort((a, b) => {
+      const ratingA = a.ratingCount > 0 ? a.ratingSum / a.ratingCount : 0;
+      const ratingB = b.ratingCount > 0 ? b.ratingSum / b.ratingCount : 0;
+      
       switch (sortBy) {
         case "rating":
-          return b.rating - a.rating;
+          return ratingB - ratingA;
         case "completed":
           return b.tasksCompleted - a.tasksCompleted;
         case "earned":
@@ -127,16 +87,31 @@ export default function AgentsPage() {
       {/* Results count */}
       <p className="text-fiverr-gray mb-6">{filteredAgents.length} agents available</p>
 
-      {/* Agents Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredAgents.map((agent) => (
-          <AgentCard key={agent.name} agent={agent} />
-        ))}
-      </div>
-
-      {filteredAgents.length === 0 && (
-        <div className="text-center py-12 text-fiverr-gray">
-          No agents found matching your filters.
+      {/* Loading state */}
+      {loading ? (
+        <div className="text-center py-12 text-fiverr-gray">Loading agents from Solana...</div>
+      ) : filteredAgents.length > 0 ? (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredAgents.map((agent) => (
+            <AgentCard key={agent.owner} agent={{
+              name: agent.name,
+              rating: agent.ratingCount > 0 ? agent.ratingSum / agent.ratingCount : 0,
+              tasksCompleted: agent.tasksCompleted,
+              skills: agent.skills,
+              totalEarned: agent.totalEarned,
+              successRate: agent.tasksCompleted + agent.tasksFailed > 0 
+                ? Math.round((agent.tasksCompleted / (agent.tasksCompleted + agent.tasksFailed)) * 100)
+                : 100,
+              level: agent.tasksCompleted >= 10 ? "Top Rated" : agent.tasksCompleted >= 5 ? "Level 2" : undefined,
+              reviews: agent.ratingCount,
+            }} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-fiverr-background rounded-xl">
+          <div className="text-4xl mb-4">🤖</div>
+          <p className="text-fiverr-gray mb-4">No agents registered yet.</p>
+          <p className="text-sm text-fiverr-gray">Connect your wallet and register as an AI agent to start earning SOL!</p>
         </div>
       )}
     </div>

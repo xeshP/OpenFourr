@@ -4,101 +4,83 @@ import { TaskCard } from "@/components/TaskCard";
 import { AgentCard } from "@/components/AgentCard";
 import { Stats } from "@/components/Stats";
 import Link from "next/link";
-import { useState } from "react";
-
-// Mock data for demo
-const mockTasks = [
-  {
-    id: 1,
-    title: "Build a landing page for NFT project",
-    description: "Need a modern, responsive landing page with wallet connect functionality",
-    category: "Web Dev",
-    bounty: 3.0,
-    deadline: "48h",
-    status: "open",
-    client: "7xKX...9dF2",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80",
-  },
-  {
-    id: 2,
-    title: "Research top 10 DeFi protocols on Solana",
-    description: "Comprehensive analysis with TVL, yields, and risk assessment",
-    category: "Research",
-    bounty: 1.5,
-    deadline: "24h",
-    status: "open",
-    client: "4aBc...xY12",
-    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&q=80",
-  },
-  {
-    id: 3,
-    title: "Create Discord bot for server management",
-    description: "Moderation features, role management, and welcome messages",
-    category: "Bots",
-    bounty: 2.0,
-    deadline: "72h",
-    status: "in_progress",
-    client: "9zPq...mN34",
-    agent: "Klausmeister",
-    image: "https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&q=80",
-  },
-  {
-    id: 4,
-    title: "Audit Solana smart contract",
-    description: "Security audit for a token staking program",
-    category: "Smart Contracts",
-    bounty: 5.0,
-    deadline: "5d",
-    status: "open",
-    client: "2xPq...aB89",
-    image: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400&q=80",
-  },
-];
-
-const mockAgents = [
-  {
-    name: "Klausmeister",
-    rating: 4.9,
-    tasksCompleted: 47,
-    skills: ["Web Dev", "Research", "Bots"],
-    totalEarned: 156.5,
-    successRate: 98,
-    level: "Top Rated",
-    reviews: 42,
-  },
-  {
-    name: "CodeBot-X",
-    rating: 4.7,
-    tasksCompleted: 32,
-    skills: ["Smart Contracts", "TypeScript", "Testing"],
-    totalEarned: 89.2,
-    successRate: 94,
-    level: "Level 2",
-    reviews: 28,
-  },
-  {
-    name: "ResearchAI",
-    rating: 4.8,
-    tasksCompleted: 61,
-    skills: ["Research", "Analysis", "Reports"],
-    totalEarned: 124.0,
-    successRate: 96,
-    level: "Top Rated",
-    reviews: 55,
-  },
-];
+import { useState, useEffect } from "react";
+import { useProgram, Task, Agent } from "@/lib/useProgram";
 
 const popularCategories = [
-  { name: "Web Development", icon: "💻", count: 156 },
-  { name: "Research", icon: "🔍", count: 89 },
-  { name: "Smart Contracts", icon: "📜", count: 67 },
-  { name: "Bots & Automation", icon: "🤖", count: 124 },
-  { name: "Design", icon: "🎨", count: 45 },
-  { name: "Writing", icon: "✍️", count: 78 },
+  { name: "Web Development", icon: "💻", count: 0 },
+  { name: "Research", icon: "🔍", count: 0 },
+  { name: "Smart Contracts", icon: "📜", count: 0 },
+  { name: "Bots & Automation", icon: "🤖", count: 0 },
+  { name: "Design", icon: "🎨", count: 0 },
+  { name: "Writing", icon: "✍️", count: 0 },
 ];
 
 export default function Home() {
   const [heroSearch, setHeroSearch] = useState("");
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [stats, setStats] = useState({ totalTasks: 0, totalCompleted: 0, totalVolume: 0, activeAgents: 0 });
+  const [loading, setLoading] = useState(true);
+  
+  const { fetchAllTasks, fetchAllAgents, fetchPlatformStats, connected } = useProgram();
+
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      try {
+        const [tasksData, agentsData, platformStats] = await Promise.all([
+          fetchAllTasks(),
+          fetchAllAgents(),
+          fetchPlatformStats(),
+        ]);
+        
+        setTasks(tasksData);
+        setAgents(agentsData);
+        
+        if (platformStats) {
+          setStats({
+            totalTasks: platformStats.totalTasks,
+            totalCompleted: platformStats.totalCompleted,
+            totalVolume: platformStats.totalVolume,
+            activeAgents: agentsData.filter(a => a.isActive).length,
+          });
+        } else {
+          setStats({
+            totalTasks: tasksData.length,
+            totalCompleted: tasksData.filter(t => t.status === "completed").length,
+            totalVolume: tasksData.reduce((sum, t) => sum + t.bounty, 0),
+            activeAgents: agentsData.filter(a => a.isActive).length,
+          });
+        }
+      } catch (e) {
+        console.error("Failed to load data:", e);
+      }
+      setLoading(false);
+    }
+    
+    loadData();
+  }, [fetchAllTasks, fetchAllAgents, fetchPlatformStats]);
+
+  const openTasks = tasks.filter(t => t.status === "open").slice(0, 4);
+  const topAgents = agents
+    .sort((a, b) => {
+      const ratingA = a.ratingCount > 0 ? a.ratingSum / a.ratingCount : 0;
+      const ratingB = b.ratingCount > 0 ? b.ratingSum / b.ratingCount : 0;
+      return ratingB - ratingA;
+    })
+    .slice(0, 3);
+
+  // Calculate category counts
+  const categoryCounts = tasks.reduce((acc, task) => {
+    acc[task.category] = (acc[task.category] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const categoriesWithCounts = popularCategories.map(cat => ({
+    ...cat,
+    count: categoryCounts[cat.name] || 0,
+  }));
 
   return (
     <div>
@@ -144,28 +126,29 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Trusted by section */}
-      <section className="py-8 bg-fiverr-background border-b border-fiverr-border">
+      {/* Network info */}
+      <section className="py-4 bg-amber-50 border-b border-amber-200">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-center gap-8 text-fiverr-gray">
-            <span className="text-sm font-medium">Trusted by:</span>
-            <span className="font-semibold text-fiverr-dark">Magic Eden</span>
-            <span className="font-semibold text-fiverr-dark">Phantom</span>
-            <span className="font-semibold text-fiverr-dark">Jupiter</span>
-            <span className="font-semibold text-fiverr-dark">Marinade</span>
+          <div className="flex items-center justify-center gap-2 text-amber-800">
+            <span className="text-sm">🔗 Connected to <strong>Solana Devnet</strong> — Test with devnet SOL</span>
           </div>
         </div>
       </section>
 
       <div className="container mx-auto px-4">
         {/* Stats */}
-        <Stats />
+        <Stats 
+          totalTasks={stats.totalTasks}
+          activeAgents={stats.activeAgents}
+          totalVolume={stats.totalVolume}
+          successRate={stats.totalTasks > 0 ? Math.round((stats.totalCompleted / stats.totalTasks) * 100) : 0}
+        />
 
         {/* Popular Categories */}
         <section className="py-12">
           <h2 className="text-2xl font-bold mb-8">Popular Categories</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {popularCategories.map((cat) => (
+            {categoriesWithCounts.map((cat) => (
               <Link
                 key={cat.name}
                 href={`/tasks?category=${encodeURIComponent(cat.name)}`}
@@ -213,11 +196,33 @@ export default function Home() {
               See all →
             </Link>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {mockTasks.filter(t => t.status === "open").map((task) => (
-              <TaskCard key={task.id} task={task} />
-            ))}
-          </div>
+          
+          {loading ? (
+            <div className="text-center py-12 text-fiverr-gray">Loading tasks from Solana...</div>
+          ) : openTasks.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {openTasks.map((task) => (
+                <TaskCard key={task.id} task={{
+                  id: task.id,
+                  title: task.title,
+                  description: task.description,
+                  category: task.category,
+                  bounty: task.bounty,
+                  deadline: getDeadlineString(task.deadline),
+                  status: task.status,
+                  client: shortenAddress(task.client),
+                  agent: task.assignedAgent ? shortenAddress(task.assignedAgent) : undefined,
+                }} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-fiverr-background rounded-xl">
+              <p className="text-fiverr-gray mb-4">No tasks on-chain yet. Be the first to post one!</p>
+              <Link href="/tasks/new" className="px-6 py-3 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded font-semibold transition inline-block">
+                Post a Task
+              </Link>
+            </div>
+          )}
         </section>
 
         {/* Top Agents */}
@@ -231,11 +236,34 @@ export default function Home() {
               See all →
             </Link>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {mockAgents.map((agent) => (
-              <AgentCard key={agent.name} agent={agent} />
-            ))}
-          </div>
+          
+          {loading ? (
+            <div className="text-center py-12 text-fiverr-gray">Loading agents from Solana...</div>
+          ) : topAgents.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {topAgents.map((agent) => (
+                <AgentCard key={agent.owner} agent={{
+                  name: agent.name,
+                  rating: agent.ratingCount > 0 ? agent.ratingSum / agent.ratingCount : 0,
+                  tasksCompleted: agent.tasksCompleted,
+                  skills: agent.skills,
+                  totalEarned: agent.totalEarned,
+                  successRate: agent.tasksCompleted + agent.tasksFailed > 0 
+                    ? Math.round((agent.tasksCompleted / (agent.tasksCompleted + agent.tasksFailed)) * 100)
+                    : 100,
+                  level: agent.tasksCompleted >= 10 ? "Top Rated" : agent.tasksCompleted >= 5 ? "Level 2" : undefined,
+                  reviews: agent.ratingCount,
+                }} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-fiverr-background rounded-xl">
+              <p className="text-fiverr-gray mb-4">No agents registered yet. Register your AI agent!</p>
+              <Link href="/agents" className="px-6 py-3 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded font-semibold transition inline-block">
+                Register Agent
+              </Link>
+            </div>
+          )}
         </section>
 
         {/* CTA Banner */}
@@ -268,4 +296,20 @@ export default function Home() {
       </div>
     </div>
   );
+}
+
+// Helper functions
+function shortenAddress(address: string): string {
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+}
+
+function getDeadlineString(deadline: Date): string {
+  const now = new Date();
+  const diff = deadline.getTime() - now.getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  
+  if (hours < 0) return "Expired";
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
 }

@@ -1,62 +1,56 @@
 "use client";
 
-import { FC, ReactNode, createContext, useContext, useState } from "react";
+import { FC, ReactNode, useMemo } from "react";
+import dynamic from "next/dynamic";
+import {
+  ConnectionProvider,
+  WalletProvider as SolanaWalletProvider,
+  useWallet,
+} from "@solana/wallet-adapter-react";
+import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+} from "@solana/wallet-adapter-wallets";
+import { SOLANA_RPC } from "@/lib/constants";
 
-// Simplified wallet context for demo
-interface WalletContextType {
-  connected: boolean;
-  publicKey: string | null;
-  connect: () => void;
-  disconnect: () => void;
-}
-
-const WalletContext = createContext<WalletContextType>({
-  connected: false,
-  publicKey: null,
-  connect: () => {},
-  disconnect: () => {},
-});
-
-export const useWallet = () => useContext(WalletContext);
+// Import wallet adapter CSS
+import "@solana/wallet-adapter-react-ui/styles.css";
 
 interface Props {
   children: ReactNode;
 }
 
 export const WalletContextProvider: FC<Props> = ({ children }) => {
-  const [connected, setConnected] = useState(false);
-  const [publicKey, setPublicKey] = useState<string | null>(null);
-
-  const connect = () => {
-    // Simulate wallet connection
-    setConnected(true);
-    setPublicKey("7xKX...demo...9dF2");
-  };
-
-  const disconnect = () => {
-    setConnected(false);
-    setPublicKey(null);
-  };
+  const wallets = useMemo(
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+    ],
+    []
+  );
 
   return (
-    <WalletContext.Provider value={{ connected, publicKey, connect, disconnect }}>
-      {children}
-    </WalletContext.Provider>
+    <ConnectionProvider endpoint={SOLANA_RPC}>
+      <SolanaWalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          {children}
+        </WalletModalProvider>
+      </SolanaWalletProvider>
+    </ConnectionProvider>
   );
 };
 
-// Simple wallet button component
-export const WalletMultiButton = ({ className }: { className?: string }) => {
-  const { connected, publicKey, connect, disconnect } = useWallet();
+// Dynamically import the wallet button to avoid SSR issues
+const WalletMultiButtonDynamic = dynamic(
+  async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
 
-  return (
-    <button
-      onClick={connected ? disconnect : connect}
-      className={`px-4 py-2 rounded-lg font-medium transition ${className} ${
-        connected ? "bg-green-600 hover:bg-green-700" : "bg-purple-600 hover:bg-purple-700"
-      }`}
-    >
-      {connected ? publicKey?.slice(0, 8) + "..." : "Connect Wallet"}
-    </button>
-  );
+// Re-export wallet button with custom styling
+export const WalletMultiButton: FC<{ className?: string }> = ({ className }) => {
+  return <WalletMultiButtonDynamic className={className} />;
 };
+
+// Export useWallet hook
+export { useWallet };

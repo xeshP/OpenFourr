@@ -1,86 +1,35 @@
 "use client";
 
 import { TaskCard } from "@/components/TaskCard";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useProgram, Task } from "@/lib/useProgram";
+import Link from "next/link";
 
-const allTasks = [
-  {
-    id: 1,
-    title: "Build a landing page for NFT project",
-    description: "Need a modern, responsive landing page with wallet connect functionality. Should include hero section, features, roadmap, and team sections.",
-    category: "Web Dev",
-    bounty: 3.0,
-    deadline: "48h",
-    status: "open",
-    client: "7xKX...9dF2",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80",
-  },
-  {
-    id: 2,
-    title: "Research top 10 DeFi protocols on Solana",
-    description: "Comprehensive analysis with TVL, yields, and risk assessment. Include comparison charts and recommendations.",
-    category: "Research",
-    bounty: 1.5,
-    deadline: "24h",
-    status: "open",
-    client: "4aBc...xY12",
-    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&q=80",
-  },
-  {
-    id: 3,
-    title: "Create Discord bot for server management",
-    description: "Moderation features, role management, welcome messages, and custom commands.",
-    category: "Bots",
-    bounty: 2.0,
-    deadline: "72h",
-    status: "in_progress",
-    client: "9zPq...mN34",
-    agent: "Klausmeister",
-    image: "https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&q=80",
-  },
-  {
-    id: 4,
-    title: "Write technical documentation for smart contract",
-    description: "Full API documentation with examples for our Solana program. Include setup guide and integration examples.",
-    category: "Docs",
-    bounty: 1.0,
-    deadline: "36h",
-    status: "open",
-    client: "2xYz...aB56",
-    image: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?w=400&q=80",
-  },
-  {
-    id: 5,
-    title: "Analyze smart contract for security vulnerabilities",
-    description: "Security audit of our Anchor program. Check for common vulnerabilities and provide detailed report.",
-    category: "Security",
-    bounty: 5.0,
-    deadline: "96h",
-    status: "open",
-    client: "8mNp...qR78",
-    image: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400&q=80",
-  },
-  {
-    id: 6,
-    title: "Create Twitter bot for price alerts",
-    description: "Bot that monitors SOL price and tweets when significant movements happen. Include customizable thresholds.",
-    category: "Bots",
-    bounty: 1.8,
-    deadline: "48h",
-    status: "pending_review",
-    client: "5kLm...sT90",
-    agent: "CodeBot-X",
-    image: "https://images.unsplash.com/photo-1611605698335-8b1569810432?w=400&q=80",
-  },
-];
-
-const categories = ["All", "Web Dev", "Research", "Bots", "Docs", "Security"];
+const categories = ["All", "Web Development", "Research", "Bots & Automation", "Smart Contracts", "Design", "Writing"];
 
 export default function TasksPage() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const { fetchAllTasks } = useProgram();
 
-  const filteredTasks = allTasks.filter((task) => {
+  useEffect(() => {
+    async function loadTasks() {
+      setLoading(true);
+      try {
+        const data = await fetchAllTasks();
+        setTasks(data);
+      } catch (e) {
+        console.error("Failed to load tasks:", e);
+      }
+      setLoading(false);
+    }
+    loadTasks();
+  }, [fetchAllTasks]);
+
+  const filteredTasks = tasks.filter((task) => {
     const categoryMatch = selectedCategory === "All" || task.category === selectedCategory;
     const statusMatch = statusFilter === "all" || task.status === statusFilter;
     return categoryMatch && statusMatch;
@@ -94,6 +43,12 @@ export default function TasksPage() {
           <h1 className="text-3xl font-bold text-fiverr-dark mb-2">Browse Tasks</h1>
           <p className="text-fiverr-gray">Find tasks that match your skills and start earning</p>
         </div>
+        <Link 
+          href="/tasks/new"
+          className="px-6 py-3 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded font-semibold transition"
+        >
+          Post a Task
+        </Link>
       </div>
 
       {/* Filters */}
@@ -118,24 +73,56 @@ export default function TasksPage() {
           <option value="open">Open</option>
           <option value="in_progress">In Progress</option>
           <option value="pending_review">Pending Review</option>
+          <option value="completed">Completed</option>
         </select>
       </div>
 
       {/* Results count */}
       <p className="text-fiverr-gray mb-6">{filteredTasks.length} tasks available</p>
 
-      {/* Tasks Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {filteredTasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
-        ))}
-      </div>
-
-      {filteredTasks.length === 0 && (
-        <div className="text-center py-12 text-fiverr-gray">
-          No tasks found matching your filters.
+      {/* Loading state */}
+      {loading ? (
+        <div className="text-center py-12 text-fiverr-gray">Loading tasks from Solana...</div>
+      ) : filteredTasks.length > 0 ? (
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {filteredTasks.map((task) => (
+            <TaskCard key={task.id} task={{
+              id: task.id,
+              title: task.title,
+              description: task.description,
+              category: task.category,
+              bounty: task.bounty,
+              deadline: getDeadlineString(task.deadline),
+              status: task.status,
+              client: shortenAddress(task.client),
+              agent: task.assignedAgent ? shortenAddress(task.assignedAgent) : undefined,
+            }} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-fiverr-background rounded-xl">
+          <div className="text-4xl mb-4">📋</div>
+          <p className="text-fiverr-gray mb-4">No tasks found on-chain yet.</p>
+          <Link href="/tasks/new" className="px-6 py-3 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded font-semibold transition inline-block">
+            Post the First Task
+          </Link>
         </div>
       )}
     </div>
   );
+}
+
+function shortenAddress(address: string): string {
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+}
+
+function getDeadlineString(deadline: Date): string {
+  const now = new Date();
+  const diff = deadline.getTime() - now.getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  
+  if (hours < 0) return "Expired";
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
 }
