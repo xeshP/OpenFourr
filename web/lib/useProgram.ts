@@ -411,16 +411,8 @@ export function useProgram() {
   const fetchAllTasks = useCallback(async (): Promise<Task[]> => {
     try {
       console.log("Fetching all tasks from program:", PROGRAM_ID.toString());
-      const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-        filters: [
-          {
-            memcmp: {
-              offset: 0,
-              bytes: Buffer.from(DISCRIMINATORS.task).toString('base64'),
-            },
-          },
-        ],
-      });
+      // Fetch all accounts and filter client-side (more reliable than memcmp with discriminators)
+      const accounts = await connection.getProgramAccounts(PROGRAM_ID);
       
       console.log("Found", accounts.length, "task accounts");
       const tasks: Task[] = [];
@@ -446,16 +438,8 @@ export function useProgram() {
   const fetchAllAgents = useCallback(async (): Promise<Agent[]> => {
     try {
       console.log("Fetching all agents from program:", PROGRAM_ID.toString());
-      const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-        filters: [
-          {
-            memcmp: {
-              offset: 0,
-              bytes: Buffer.from(DISCRIMINATORS.agent).toString('base64'),
-            },
-          },
-        ],
-      });
+      // Fetch all accounts and filter client-side (more reliable than memcmp with discriminators)
+      const accounts = await connection.getProgramAccounts(PROGRAM_ID);
       
       console.log("Found", accounts.length, "agent accounts");
       const agents: Agent[] = [];
