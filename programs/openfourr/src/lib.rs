@@ -118,6 +118,7 @@ pub mod openfourr {
         task.deadline = Clock::get()?.unix_timestamp + (deadline_hours as i64 * 3600);
         task.status = TaskStatus::Open;
         task.submission_count = 0;
+        task.message_count = 0;
         task.winning_submission = None;
         task.bump = ctx.bumps.task;
         task.escrow_bump = ctx.bumps.escrow;
@@ -136,7 +137,6 @@ pub mod openfourr {
     }
 
     /// Submit work/application for a task (competition model)
-    /// Any registered agent can submit - multiple submissions allowed per task
     pub fn submit_application(
         ctx: Context<SubmitApplication>,
         submission_url: String,
@@ -165,6 +165,45 @@ pub mod openfourr {
             task_id: task.id,
             agent: agent.owner,
             submission_url,
+        });
+
+        Ok(())
+    }
+
+    /// Send a chat message on a task
+    /// Only client or agents who have submitted can send messages
+    pub fn send_message(
+        ctx: Context<SendMessage>,
+        content: String,
+    ) -> Result<()> {
+        let task = &mut ctx.accounts.task;
+        let message = &mut ctx.accounts.message;
+        let sender = ctx.accounts.sender.key();
+
+        require!(content.len() <= 500, OpenfourrError::MessageTooLong);
+        require!(content.len() > 0, OpenfourrError::MessageEmpty);
+
+        // Verify sender is participant (client or has submitted)
+        let is_client = task.client == sender;
+        // For agents, we check via the optional submission account
+        let is_agent = ctx.accounts.submission.is_some();
+        
+        require!(is_client || is_agent, OpenfourrError::NotTaskParticipant);
+
+        message.task_id = task.id;
+        message.message_id = task.message_count;
+        message.sender = sender;
+        message.content = content.clone();
+        message.sent_at = Clock::get()?.unix_timestamp;
+        message.bump = ctx.bumps.message;
+
+        task.message_count += 1;
+
+        emit!(MessageSent {
+            task_id: task.id,
+            message_id: message.message_id,
+            sender,
+            content,
         });
 
         Ok(())
@@ -257,7 +296,6 @@ pub mod openfourr {
         require!(task.status == TaskStatus::Open, OpenfourrError::CannotCancel);
         require!(task.submission_count == 0, OpenfourrError::HasSubmissions);
 
-        // Refund bounty from escrow to client
         let task_id_bytes = task.id.to_le_bytes();
         let escrow_seeds = &[
             b"escrow".as_ref(),
@@ -285,7 +323,7 @@ pub mod openfourr {
         Ok(())
     }
 
-    // Legacy claim_task - kept for backward compatibility but not recommended
+    // Legacy claim_task - kept for backward compatibility
     pub fn claim_task(ctx: Context<ClaimTask>) -> Result<()> {
         let task = &mut ctx.accounts.task;
         let agent = &ctx.accounts.agent_profile;
@@ -395,6 +433,25 @@ pub struct SubmitApplication<'info> {
     pub agent_profile: Account<'info, AgentProfile>,
     #[account(mut)]
     pub agent_owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SendMessage<'info> {
+    #[account(
+        init,
+        payer = sender,
+        space = 8 + Message::INIT_SPACE,
+        seeds = [b"message", task.key().as_ref(), task.message_count.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub message: Account<'info, Message>,
+    #[account(mut)]
+    pub task: Account<'info, Task>,
+    /// CHECK: Optional submission to verify agent participation
+    pub submission: Option<Account<'info, Submission>>,
+    #[account(mut)]
+    pub sender: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -519,8 +576,9 @@ pub struct Task {
     pub created_at: i64,
     pub deadline: i64,
     pub status: TaskStatus,
-    pub submission_count: u64,           // Number of submissions
-    pub winning_submission: Option<Pubkey>, // PDA of winning submission
+    pub submission_count: u64,
+    pub message_count: u64,              // Number of chat messages
+    pub winning_submission: Option<Pubkey>,
     pub completed_at: Option<i64>,
     pub bump: u8,
     pub escrow_bump: u8,
@@ -540,15 +598,27 @@ pub struct Submission {
     pub bump: u8,
 }
 
+#[account]
+#[derive(InitSpace)]
+pub struct Message {
+    pub task_id: u64,
+    pub message_id: u64,
+    pub sender: Pubkey,
+    #[max_len(500)]
+    pub content: String,
+    pub sent_at: i64,
+    pub bump: u8,
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
 pub enum TaskStatus {
     Open,
-    InProgress,  // Legacy - kept for backward compatibility
-    PendingReview, // Legacy
+    InProgress,
+    PendingReview,
     Completed,
-    Rejected,    // Legacy
+    Rejected,
     Cancelled,
-    Disputed,    // Legacy
+    Disputed,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
@@ -580,6 +650,14 @@ pub struct ApplicationSubmitted {
     pub task_id: u64,
     pub agent: Pubkey,
     pub submission_url: String,
+}
+
+#[event]
+pub struct MessageSent {
+    pub task_id: u64,
+    pub message_id: u64,
+    pub sender: Pubkey,
+    pub content: String,
 }
 
 #[event]
@@ -637,4 +715,10 @@ pub enum OpenfourrError {
     NotTaskClient,
     #[msg("Submission is not pending")]
     SubmissionNotPending,
+    #[msg("Message too long (max 500 characters)")]
+    MessageTooLong,
+    #[msg("Message cannot be empty")]
+    MessageEmpty,
+    #[msg("Not a task participant")]
+    NotTaskParticipant,
 }

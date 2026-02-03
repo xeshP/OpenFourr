@@ -1,8 +1,8 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
-import { useProgram, Task, Submission, getTaskPDA, getEscrowPDA } from "@/lib/useProgram";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useProgram, Task, Submission, Message, getTaskPDA, getEscrowPDA } from "@/lib/useProgram";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import Link from "next/link";
@@ -13,15 +13,18 @@ export default function TaskDetailPage() {
   const { connection } = useConnection();
   const { 
     fetchAllTasks, 
-    fetchTaskSubmissions, 
+    fetchTaskSubmissions,
+    fetchTaskMessages,
     submitApplication, 
     selectWinner,
+    sendMessage,
     connected,
     publicKey 
   } = useProgram();
 
   const [task, setTask] = useState<Task | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [escrowBalance, setEscrowBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -29,6 +32,10 @@ export default function TaskDetailPage() {
   const [submitUrl, setSubmitUrl] = useState("");
   const [submitNotes, setSubmitNotes] = useState("");
   const [selectingWinner, setSelectingWinner] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [activeTab, setActiveTab] = useState<"submissions" | "chat">("submissions");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadTask = useCallback(async () => {
     setLoading(true);
@@ -38,11 +45,13 @@ export default function TaskDetailPage() {
       setTask(foundTask || null);
 
       if (foundTask) {
-        // Load submissions
-        const taskSubmissions = await fetchTaskSubmissions(taskId);
+        const [taskSubmissions, taskMessages] = await Promise.all([
+          fetchTaskSubmissions(taskId),
+          fetchTaskMessages(taskId),
+        ]);
         setSubmissions(taskSubmissions);
+        setMessages(taskMessages);
 
-        // Load escrow balance
         const [escrowPDA] = getEscrowPDA(taskId);
         const escrowInfo = await connection.getAccountInfo(escrowPDA);
         if (escrowInfo) {
@@ -54,11 +63,15 @@ export default function TaskDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [fetchAllTasks, fetchTaskSubmissions, taskId, connection]);
+  }, [fetchAllTasks, fetchTaskSubmissions, fetchTaskMessages, taskId, connection]);
 
   useEffect(() => {
     loadTask();
   }, [loadTask]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleSubmitApplication = async () => {
     if (!submitUrl.trim()) return;
@@ -90,10 +103,27 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !connected) return;
+    setSendingMessage(true);
+    try {
+      const hasSubmission = submissions.some(s => publicKey && s.agent === publicKey.toString());
+      await sendMessage(taskId, newMessage, hasSubmission);
+      setNewMessage("");
+      await loadTask();
+    } catch (error) {
+      console.error("Error sending message:", error);
+      alert("Failed to send message: " + (error as Error).message);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
   const isOwner = publicKey && task && task.client === publicKey.toString();
   const hasSubmitted = submissions.some(s => publicKey && s.agent === publicKey.toString());
   const canSubmit = connected && task?.status === "open" && !isOwner && !hasSubmitted;
   const canSelectWinner = isOwner && task?.status === "open" && submissions.length > 0;
+  const canChat = connected && (isOwner || hasSubmitted);
 
   if (loading) {
     return (
@@ -130,7 +160,6 @@ export default function TaskDetailPage() {
   return (
     <div className="min-h-screen bg-gray-900 py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* Back Link */}
         <Link href="/tasks" className="text-purple-400 hover:text-purple-300 mb-6 inline-block">
           ← Back to Tasks
         </Link>
@@ -150,7 +179,7 @@ export default function TaskDetailPage() {
               <p className="text-xl font-bold text-green-400">{task.bounty} SOL</p>
             </div>
             <div className="bg-gray-700/50 rounded-lg p-3">
-              <p className="text-gray-400 text-sm">Escrow Balance</p>
+              <p className="text-gray-400 text-sm">Escrow</p>
               <p className="text-xl font-bold text-yellow-400">{escrowBalance.toFixed(4)} SOL</p>
             </div>
             <div className="bg-gray-700/50 rounded-lg p-3">
@@ -212,8 +241,8 @@ export default function TaskDetailPage() {
                   <textarea
                     value={submitNotes}
                     onChange={(e) => setSubmitNotes(e.target.value)}
-                    placeholder="Describe your work, approach, or any relevant details..."
-                    rows={4}
+                    placeholder="Describe your work..."
+                    rows={3}
                     className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
                   />
                 </div>
@@ -223,7 +252,7 @@ export default function TaskDetailPage() {
                     disabled={submitting || !submitUrl.trim()}
                     className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50"
                   >
-                    {submitting ? "Submitting..." : "Submit Application"}
+                    {submitting ? "Submitting..." : "Submit"}
                   </button>
                   <button
                     onClick={() => setShowSubmitForm(false)}
@@ -239,91 +268,176 @@ export default function TaskDetailPage() {
 
         {hasSubmitted && task.status === "open" && (
           <div className="bg-green-500/20 border border-green-500/30 rounded-xl p-4 mb-6">
-            <p className="text-green-400">✅ You have submitted your work for this task!</p>
+            <p className="text-green-400">✅ You have submitted your work!</p>
           </div>
         )}
 
-        {/* Submissions List */}
-        <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4">
-            Submissions ({submissions.length})
-          </h2>
-
-          {submissions.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">
-              No submissions yet. Be the first to submit!
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {submissions.map((submission, idx) => (
-                <div
-                  key={idx}
-                  className={`bg-gray-700/50 rounded-lg p-4 border-2 ${
-                    submission.status === "selected" 
-                      ? "border-green-500" 
-                      : "border-transparent"
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <p className="text-white font-medium">
-                        Agent: {submission.agent.slice(0, 8)}...{submission.agent.slice(-6)}
-                      </p>
-                      <p className="text-gray-400 text-sm">
-                        Submitted {submission.submittedAt.toLocaleString()}
-                      </p>
-                    </div>
-                    {submission.status === "selected" ? (
-                      <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium">
-                        🏆 WINNER
-                      </span>
-                    ) : canSelectWinner ? (
-                      <div className="flex gap-2">
-                        {[1, 2, 3, 4, 5].map((rating) => (
-                          <button
-                            key={rating}
-                            onClick={() => handleSelectWinner(submission.agent, rating)}
-                            disabled={selectingWinner !== null}
-                            className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-500 disabled:opacity-50"
-                            title={`Select as winner with ${rating} star rating`}
-                          >
-                            {selectingWinner === submission.agent ? "..." : `⭐${rating}`}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  
-                  <div className="mb-2">
-                    <p className="text-gray-400 text-sm">Work URL:</p>
-                    <a
-                      href={submission.submissionUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-purple-400 hover:text-purple-300 break-all"
-                    >
-                      {submission.submissionUrl}
-                    </a>
-                  </div>
-
-                  {submission.submissionNotes && (
-                    <div>
-                      <p className="text-gray-400 text-sm">Notes:</p>
-                      <p className="text-white">{submission.submissionNotes}</p>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab("submissions")}
+            className={`px-4 py-2 rounded-lg font-medium transition ${
+              activeTab === "submissions" 
+                ? "bg-purple-600 text-white" 
+                : "bg-gray-700 text-gray-400 hover:bg-gray-600"
+            }`}
+          >
+            📋 Submissions ({submissions.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`px-4 py-2 rounded-lg font-medium transition ${
+              activeTab === "chat" 
+                ? "bg-purple-600 text-white" 
+                : "bg-gray-700 text-gray-400 hover:bg-gray-600"
+            }`}
+          >
+            💬 Chat ({messages.length})
+          </button>
         </div>
 
-        {/* Info for unconnected users */}
+        {/* Submissions Tab */}
+        {activeTab === "submissions" && (
+          <div className="bg-gray-800 rounded-xl p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Submissions</h2>
+
+            {submissions.length === 0 ? (
+              <p className="text-gray-400 text-center py-8">No submissions yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {submissions.map((submission, idx) => (
+                  <div
+                    key={idx}
+                    className={`bg-gray-700/50 rounded-lg p-4 border-2 ${
+                      submission.status === "selected" ? "border-green-500" : "border-transparent"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="text-white font-medium">
+                          Agent: {submission.agent.slice(0, 8)}...{submission.agent.slice(-6)}
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          {submission.submittedAt.toLocaleString()}
+                        </p>
+                      </div>
+                      {submission.status === "selected" ? (
+                        <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium">
+                          🏆 WINNER
+                        </span>
+                      ) : canSelectWinner ? (
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((rating) => (
+                            <button
+                              key={rating}
+                              onClick={() => handleSelectWinner(submission.agent, rating)}
+                              disabled={selectingWinner !== null}
+                              className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-500 disabled:opacity-50"
+                            >
+                              {selectingWinner === submission.agent ? "..." : `⭐${rating}`}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    
+                    <div className="mb-2">
+                      <a
+                        href={submission.submissionUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-400 hover:text-purple-300 break-all text-sm"
+                      >
+                        🔗 {submission.submissionUrl}
+                      </a>
+                    </div>
+
+                    {submission.submissionNotes && (
+                      <p className="text-gray-300 text-sm">{submission.submissionNotes}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Chat Tab */}
+        {activeTab === "chat" && (
+          <div className="bg-gray-800 rounded-xl p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Chat</h2>
+
+            {/* Messages */}
+            <div className="bg-gray-900 rounded-lg p-4 h-96 overflow-y-auto mb-4">
+              {messages.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">No messages yet. Start the conversation!</p>
+              ) : (
+                <div className="space-y-3">
+                  {messages.map((msg, idx) => {
+                    const isMe = publicKey && msg.sender === publicKey.toString();
+                    const isClient = msg.sender === task.client;
+                    return (
+                      <div key={idx} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[70%] rounded-lg p-3 ${
+                          isMe 
+                            ? "bg-purple-600 text-white" 
+                            : isClient 
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-700 text-white"
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs opacity-75">
+                              {isClient ? "👤 Client" : "🤖 Agent"}: {msg.sender.slice(0, 6)}...
+                            </span>
+                          </div>
+                          <p>{msg.content}</p>
+                          <p className="text-xs opacity-50 mt-1">
+                            {msg.sentAt.toLocaleTimeString()}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
+
+            {/* Message Input */}
+            {canChat ? (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+                  placeholder="Type a message..."
+                  maxLength={500}
+                  className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                />
+                <button
+                  onClick={handleSendMessage}
+                  disabled={sendingMessage || !newMessage.trim()}
+                  className="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-500 disabled:opacity-50"
+                >
+                  {sendingMessage ? "..." : "Send"}
+                </button>
+              </div>
+            ) : (
+              <div className="bg-gray-700/50 rounded-lg p-4 text-center">
+                <p className="text-gray-400">
+                  {!connected 
+                    ? "Connect wallet to chat" 
+                    : "Only task client and agents who submitted can chat"}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {!connected && task.status === "open" && (
           <div className="mt-6 bg-yellow-500/20 border border-yellow-500/30 rounded-xl p-4 text-center">
-            <p className="text-yellow-400">
-              Connect your wallet to submit your work for this task!
-            </p>
+            <p className="text-yellow-400">Connect your wallet to submit work or chat!</p>
           </div>
         )}
       </div>

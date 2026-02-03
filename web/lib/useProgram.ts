@@ -24,6 +24,7 @@ export interface Task {
   deadline: Date;
   status: string;
   submissionCount: number;
+  messageCount: number;
   winningSubmission?: string;
   completedAt?: Date;
 }
@@ -35,6 +36,14 @@ export interface Submission {
   submissionNotes: string;
   submittedAt: Date;
   status: string;
+}
+
+export interface Message {
+  taskId: number;
+  messageId: number;
+  sender: string;
+  content: string;
+  sentAt: Date;
 }
 
 export interface Agent {
@@ -65,6 +74,7 @@ const DISCRIMINATORS = {
   agent: Buffer.from([60, 227, 42, 24, 0, 87, 86, 205]),
   platform: Buffer.from([77, 92, 204, 58, 187, 98, 91, 12]),
   submission: Buffer.from([58, 194, 159, 158, 75, 102, 178, 197]),
+  message: Buffer.from([110, 151, 23, 110, 198, 6, 125, 181]),
 };
 
 // Instruction discriminators from IDL
@@ -74,6 +84,7 @@ const INSTRUCTION_DISCRIMINATORS = {
   submitApplication: Buffer.from([27, 71, 89, 170, 144, 203, 50, 8]),
   selectWinner: Buffer.from([119, 66, 44, 236, 79, 158, 82, 51]),
   cancelTask: Buffer.from([69, 228, 134, 187, 134, 105, 238, 48]),
+  sendMessage: Buffer.from([57, 40, 34, 178, 189, 10, 65, 26]),
 };
 
 // Task status mapping
@@ -103,6 +114,12 @@ export function getEscrowPDA(taskId: number): [PublicKey, number] {
 
 export function getSubmissionPDA(taskPDA: PublicKey, agentOwner: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from("submission"), taskPDA.toBuffer(), agentOwner.toBuffer()], PROGRAM_ID);
+}
+
+export function getMessagePDA(taskPDA: PublicKey, messageId: number): [PublicKey, number] {
+  const messageIdBuffer = Buffer.alloc(8);
+  messageIdBuffer.writeBigUInt64LE(BigInt(messageId));
+  return PublicKey.findProgramAddressSync([Buffer.from("message"), taskPDA.toBuffer(), messageIdBuffer], PROGRAM_ID);
 }
 
 // Borsh parsing helpers
@@ -158,7 +175,7 @@ function readStringVec(data: Buffer, offset: number): { value: string[]; newOffs
   return { value: values, newOffset: currentOffset };
 }
 
-// Parse Task account data (NEW structure)
+// Parse Task account data (with messageCount)
 function parseTaskAccount(data: Buffer): Task | null {
   try {
     const discriminator = data.slice(0, 8);
@@ -176,6 +193,7 @@ function parseTaskAccount(data: Buffer): Task | null {
     const deadline = readI64(data, offset); offset = deadline.newOffset;
     const statusByte = readU8(data, offset); offset = statusByte.newOffset;
     const submissionCount = readU64(data, offset); offset = submissionCount.newOffset;
+    const messageCount = readU64(data, offset); offset = messageCount.newOffset;
     const winningSubmission = readOptionPubkey(data, offset); offset = winningSubmission.newOffset;
     const completedAt = readOptionI64(data, offset);
 
@@ -191,6 +209,7 @@ function parseTaskAccount(data: Buffer): Task | null {
       deadline: new Date(deadline.value * 1000),
       status: TASK_STATUS[statusByte.value] || "unknown",
       submissionCount: submissionCount.value,
+      messageCount: messageCount.value,
       winningSubmission: winningSubmission.value || undefined,
       completedAt: completedAt.value ? new Date(completedAt.value * 1000) : undefined,
     };
@@ -264,6 +283,32 @@ function parseAgentAccount(data: Buffer): Agent | null {
     };
   } catch (e) {
     console.error("Failed to parse agent:", e);
+    return null;
+  }
+}
+
+// Parse Message account data
+function parseMessageAccount(data: Buffer): Message | null {
+  try {
+    const discriminator = data.slice(0, 8);
+    if (!discriminator.equals(DISCRIMINATORS.message)) return null;
+
+    let offset = 8;
+    const taskId = readU64(data, offset); offset = taskId.newOffset;
+    const messageId = readU64(data, offset); offset = messageId.newOffset;
+    const sender = readPubkey(data, offset); offset = sender.newOffset;
+    const content = readString(data, offset); offset = content.newOffset;
+    const sentAt = readI64(data, offset);
+
+    return {
+      taskId: taskId.value,
+      messageId: messageId.value,
+      sender: sender.value,
+      content: content.value,
+      sentAt: new Date(sentAt.value * 1000),
+    };
+  } catch (e) {
+    console.error("Failed to parse message:", e);
     return null;
   }
 }
@@ -367,6 +412,24 @@ export function useProgram() {
       return submissions;
     } catch (e) {
       console.error("Failed to fetch submissions:", e);
+      return [];
+    }
+  }, [connection]);
+
+  const fetchTaskMessages = useCallback(async (taskId: number): Promise<Message[]> => {
+    try {
+      const accounts = await connection.getProgramAccounts(PROGRAM_ID);
+      const messages: Message[] = [];
+      for (const { account } of accounts) {
+        const message = parseMessageAccount(account.data);
+        if (message && message.taskId === taskId) {
+          messages.push(message);
+        }
+      }
+      messages.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+      return messages;
+    } catch (e) {
+      console.error("Failed to fetch messages:", e);
       return [];
     }
   }, [connection]);
@@ -571,6 +634,65 @@ export function useProgram() {
     return txid;
   }, [connection, wallet]);
 
+  const sendMessage = useCallback(async (
+    taskId: number,
+    content: string,
+    hasSubmission: boolean
+  ): Promise<string> => {
+    if (!wallet.publicKey || !wallet.signTransaction) throw new Error("Wallet not connected");
+
+    const [taskPDA] = getTaskPDA(taskId);
+    
+    // Get current message count from task
+    const taskInfo = await connection.getAccountInfo(taskPDA);
+    if (!taskInfo) throw new Error("Task not found");
+    const taskData = parseTaskAccount(taskInfo.data);
+    if (!taskData) throw new Error("Failed to parse task");
+    
+    const [messagePDA] = getMessagePDA(taskPDA, taskData.messageCount);
+
+    const instructionData = Buffer.concat([
+      INSTRUCTION_DISCRIMINATORS.sendMessage,
+      serializeString(content),
+    ]);
+
+    const keys = [
+      { pubkey: messagePDA, isSigner: false, isWritable: true },
+      { pubkey: taskPDA, isSigner: false, isWritable: true },
+    ];
+
+    // Add submission account if sender is an agent with a submission
+    if (hasSubmission) {
+      const [submissionPDA] = getSubmissionPDA(taskPDA, wallet.publicKey);
+      keys.push({ pubkey: submissionPDA, isSigner: false, isWritable: false });
+    }
+
+    keys.push(
+      { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    );
+
+    const instruction = new TransactionInstruction({
+      keys,
+      programId: PROGRAM_ID,
+      data: instructionData,
+    });
+
+    const transaction = new Transaction()
+      .add(ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }))
+      .add(instruction);
+    transaction.feePayer = wallet.publicKey;
+    
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+
+    const signed = await wallet.signTransaction(transaction);
+    const txid = await connection.sendRawTransaction(signed.serialize());
+    await connection.confirmTransaction({ signature: txid, blockhash, lastValidBlockHeight });
+
+    return txid;
+  }, [connection, wallet]);
+
   return {
     connected: !!wallet.publicKey,
     publicKey: wallet.publicKey,
@@ -578,9 +700,11 @@ export function useProgram() {
     fetchAllTasks,
     fetchAllAgents,
     fetchTaskSubmissions,
+    fetchTaskMessages,
     createTask,
     registerAgent,
     submitApplication,
     selectWinner,
+    sendMessage,
   };
 }
