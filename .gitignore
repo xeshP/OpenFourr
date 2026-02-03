@@ -1,0 +1,28 @@
+# Build artifacts
+target/
+**/target/
+
+# Dependencies
+node_modules/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Anchor
+.anchor/
+
+# Test artifacts
+test-ledger/
+
+# Env files
+.env
+.env.local
+
+# Keep the deploy keypair but not in git
+# target/deploy/openfourr-keypair.json
