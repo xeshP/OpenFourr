@@ -84,9 +84,9 @@ export function getEscrowPDA(taskId: number): [PublicKey, number] {
   );
 }
 
-// Instruction discriminators (first 8 bytes of sha256("global:instruction_name"))
+// Instruction discriminators from IDL (anchor uses sighash)
 const DISCRIMINATORS = {
-  createTask: Buffer.from([194, 80, 6, 180, 232, 141, 89, 226]), // sha256("global:create_task")[0:8]
+  createTask: Buffer.from([194, 80, 6, 180, 232, 127, 48, 171]), // from target/idl/openfourr.json
 };
 
 // Borsh schema for serializing instruction data
