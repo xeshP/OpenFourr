@@ -1,314 +1,331 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useEffect } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@/components/WalletProvider";
-import { useProgram, Task, getTaskPDA, getEscrowPDA } from "@/lib/useProgram";
-import Link from "next/link";
+import { useState, useEffect, useCallback } from "react";
+import { useProgram, Task, Submission, getTaskPDA, getEscrowPDA } from "@/lib/useProgram";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import Link from "next/link";
 
 export default function TaskDetailPage() {
   const params = useParams();
   const taskId = parseInt(params.id as string);
-  const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
-  const { fetchAllTasks, claimTask, submitWork } = useProgram();
-  
-  const [task, setTask] = useState<Task | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [escrowBalance, setEscrowBalance] = useState<number>(0);
-  const [error, setError] = useState<string | null>(null);
+  const { 
+    fetchAllTasks, 
+    fetchTaskSubmissions, 
+    submitApplication, 
+    selectWinner,
+    connected,
+    publicKey 
+  } = useProgram();
 
-  useEffect(() => {
-    async function loadTask() {
-      setLoading(true);
-      try {
-        const tasks = await fetchAllTasks();
-        const found = tasks.find(t => t.id === taskId);
-        setTask(found || null);
-        
-        // Get escrow balance
-        if (found) {
-          const [escrowPDA] = getEscrowPDA(taskId);
-          const balance = await connection.getBalance(escrowPDA);
-          setEscrowBalance(balance / LAMPORTS_PER_SOL);
+  const [task, setTask] = useState<Task | null>(null);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [escrowBalance, setEscrowBalance] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [showSubmitForm, setShowSubmitForm] = useState(false);
+  const [submitUrl, setSubmitUrl] = useState("");
+  const [submitNotes, setSubmitNotes] = useState("");
+  const [selectingWinner, setSelectingWinner] = useState<string | null>(null);
+
+  const loadTask = useCallback(async () => {
+    setLoading(true);
+    try {
+      const allTasks = await fetchAllTasks();
+      const foundTask = allTasks.find(t => t.id === taskId);
+      setTask(foundTask || null);
+
+      if (foundTask) {
+        // Load submissions
+        const taskSubmissions = await fetchTaskSubmissions(taskId);
+        setSubmissions(taskSubmissions);
+
+        // Load escrow balance
+        const [escrowPDA] = getEscrowPDA(taskId);
+        const escrowInfo = await connection.getAccountInfo(escrowPDA);
+        if (escrowInfo) {
+          setEscrowBalance(escrowInfo.lamports / LAMPORTS_PER_SOL);
         }
-      } catch (e) {
-        console.error("Failed to load task:", e);
-        setError("Failed to load task");
       }
+    } catch (error) {
+      console.error("Error loading task:", error);
+    } finally {
       setLoading(false);
     }
-    
-    if (!isNaN(taskId)) {
-      loadTask();
+  }, [fetchAllTasks, fetchTaskSubmissions, taskId, connection]);
+
+  useEffect(() => {
+    loadTask();
+  }, [loadTask]);
+
+  const handleSubmitApplication = async () => {
+    if (!submitUrl.trim()) return;
+    setSubmitting(true);
+    try {
+      await submitApplication(taskId, submitUrl, submitNotes);
+      setShowSubmitForm(false);
+      setSubmitUrl("");
+      setSubmitNotes("");
+      await loadTask();
+    } catch (error) {
+      console.error("Error submitting application:", error);
+      alert("Failed to submit: " + (error as Error).message);
+    } finally {
+      setSubmitting(false);
     }
-  }, [taskId, fetchAllTasks, connection]);
+  };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "open": return "bg-green-100 text-green-800";
-      case "in_progress": return "bg-blue-100 text-blue-800";
-      case "pending_review": return "bg-yellow-100 text-yellow-800";
-      case "completed": return "bg-purple-100 text-purple-800";
-      case "rejected": return "bg-red-100 text-red-800";
-      case "cancelled": return "bg-gray-100 text-gray-800";
-      default: return "bg-gray-100 text-gray-800";
+  const handleSelectWinner = async (agentAddress: string, rating: number) => {
+    setSelectingWinner(agentAddress);
+    try {
+      await selectWinner(taskId, agentAddress, rating);
+      await loadTask();
+    } catch (error) {
+      console.error("Error selecting winner:", error);
+      alert("Failed to select winner: " + (error as Error).message);
+    } finally {
+      setSelectingWinner(null);
     }
   };
 
-  const getStatusText = (status: string) => {
-    return status.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase());
-  };
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getTimeRemaining = (deadline: Date) => {
-    const now = new Date();
-    const diff = deadline.getTime() - now.getTime();
-    
-    if (diff < 0) return "Expired";
-    
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
-    
-    if (days > 0) return `${days} day${days > 1 ? 's' : ''} left`;
-    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} left`;
-    return "Less than 1 hour left";
-  };
-
-  const isOwner = publicKey && task?.client === publicKey.toString();
-  const isAssignedAgent = publicKey && task?.assignedAgent === publicKey.toString();
+  const isOwner = publicKey && task && task.client === publicKey.toString();
+  const hasSubmitted = submissions.some(s => publicKey && s.agent === publicKey.toString());
+  const canSubmit = connected && task?.status === "open" && !isOwner && !hasSubmitted;
+  const canSelectWinner = isOwner && task?.status === "open" && submissions.length > 0;
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center">
-          <div className="text-4xl mb-4">⏳</div>
-          <p className="text-fiverr-gray">Loading task from Solana...</p>
-        </div>
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
       </div>
     );
   }
 
   if (!task) {
     return (
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center">
-          <div className="text-4xl mb-4">❌</div>
-          <h1 className="text-2xl font-bold text-fiverr-dark mb-4">Task Not Found</h1>
-          <p className="text-fiverr-gray mb-6">This task doesn't exist or has been removed.</p>
-          <Link href="/tasks" className="px-6 py-3 bg-fiverr-green text-white rounded font-semibold">
-            Browse Tasks
-          </Link>
-        </div>
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center gap-4">
+        <p className="text-white text-xl">Task #{taskId} not found</p>
+        <Link href="/tasks" className="text-purple-400 hover:text-purple-300">
+          ← Back to Tasks
+        </Link>
       </div>
     );
   }
 
+  const timeLeft = task.deadline.getTime() - Date.now();
+  const hoursLeft = Math.max(0, Math.floor(timeLeft / (1000 * 60 * 60)));
+  const isExpired = timeLeft <= 0;
+
+  const statusColors: Record<string, string> = {
+    open: "bg-green-500/20 text-green-400",
+    in_progress: "bg-yellow-500/20 text-yellow-400",
+    pending_review: "bg-blue-500/20 text-blue-400",
+    completed: "bg-purple-500/20 text-purple-400",
+    cancelled: "bg-gray-500/20 text-gray-400",
+    rejected: "bg-red-500/20 text-red-400",
+  };
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Breadcrumb */}
-      <div className="mb-6">
-        <Link href="/tasks" className="text-fiverr-green hover:underline">← Back to Tasks</Link>
-      </div>
+    <div className="min-h-screen bg-gray-900 py-8 px-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Back Link */}
+        <Link href="/tasks" className="text-purple-400 hover:text-purple-300 mb-6 inline-block">
+          ← Back to Tasks
+        </Link>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Header */}
-          <div className="bg-white border border-fiverr-border rounded-xl p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(task.status)}`}>
-                  {getStatusText(task.status)}
-                </span>
-                <span className="ml-2 text-sm text-fiverr-gray">#{task.id}</span>
-              </div>
-              <span className="text-sm text-fiverr-gray">{task.category}</span>
+        {/* Task Header */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <div className="flex justify-between items-start mb-4">
+            <h1 className="text-2xl font-bold text-white">{task.title}</h1>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[task.status] || "bg-gray-500/20 text-gray-400"}`}>
+              {task.status.replace("_", " ").toUpperCase()}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-gray-700/50 rounded-lg p-3">
+              <p className="text-gray-400 text-sm">Bounty</p>
+              <p className="text-xl font-bold text-green-400">{task.bounty} SOL</p>
             </div>
-            
-            <h1 className="text-2xl font-bold text-fiverr-dark mb-4">{task.title}</h1>
-            
-            <div className="flex items-center gap-4 text-sm text-fiverr-gray">
-              <span>Posted {formatDate(task.createdAt)}</span>
-              <span>•</span>
-              <span className={task.deadline < new Date() ? "text-red-500" : "text-fiverr-dark"}>
-                {getTimeRemaining(task.deadline)}
-              </span>
+            <div className="bg-gray-700/50 rounded-lg p-3">
+              <p className="text-gray-400 text-sm">Escrow Balance</p>
+              <p className="text-xl font-bold text-yellow-400">{escrowBalance.toFixed(4)} SOL</p>
+            </div>
+            <div className="bg-gray-700/50 rounded-lg p-3">
+              <p className="text-gray-400 text-sm">Time Left</p>
+              <p className={`text-xl font-bold ${isExpired ? 'text-red-400' : 'text-blue-400'}`}>
+                {isExpired ? 'Expired' : `${hoursLeft}h`}
+              </p>
+            </div>
+            <div className="bg-gray-700/50 rounded-lg p-3">
+              <p className="text-gray-400 text-sm">Submissions</p>
+              <p className="text-xl font-bold text-purple-400">{task.submissionCount}</p>
             </div>
           </div>
 
-          {/* Description */}
-          <div className="bg-white border border-fiverr-border rounded-xl p-6">
-            <h2 className="text-lg font-bold text-fiverr-dark mb-4">Description</h2>
-            <p className="text-fiverr-dark whitespace-pre-wrap">{task.description}</p>
+          <div className="mb-4">
+            <h3 className="text-gray-400 text-sm mb-2">Description</h3>
+            <p className="text-white">{task.description}</p>
           </div>
 
-          {/* Requirements */}
           {task.requirements && (
-            <div className="bg-white border border-fiverr-border rounded-xl p-6">
-              <h2 className="text-lg font-bold text-fiverr-dark mb-4">Requirements</h2>
-              <p className="text-fiverr-dark whitespace-pre-wrap">{task.requirements}</p>
+            <div className="mb-4">
+              <h3 className="text-gray-400 text-sm mb-2">Requirements</h3>
+              <p className="text-white">{task.requirements}</p>
             </div>
           )}
 
-          {/* Submission (if any) */}
-          {task.submissionUrl && (
-            <div className="bg-white border border-fiverr-border rounded-xl p-6">
-              <h2 className="text-lg font-bold text-fiverr-dark mb-4">📦 Submission</h2>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm text-fiverr-gray">Submission URL:</label>
-                  <a href={task.submissionUrl} target="_blank" rel="noopener noreferrer" 
-                     className="block text-fiverr-green hover:underline break-all">
-                    {task.submissionUrl}
-                  </a>
-                </div>
-                {task.submissionNotes && (
-                  <div>
-                    <label className="text-sm text-fiverr-gray">Notes:</label>
-                    <p className="text-fiverr-dark">{task.submissionNotes}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Rating (if completed) */}
-          {task.status === "completed" && task.rating && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-6">
-              <h2 className="text-lg font-bold text-green-800 mb-2">✅ Task Completed</h2>
-              <div className="flex items-center gap-2">
-                <span className="text-yellow-500 text-xl">{"★".repeat(task.rating)}</span>
-                <span className="text-fiverr-gray">{task.rating}/5 rating</span>
-              </div>
-            </div>
-          )}
+          <div className="flex items-center gap-4 text-sm text-gray-400">
+            <span className="bg-gray-700 px-2 py-1 rounded">{task.category}</span>
+            <span>Posted {task.createdAt.toLocaleDateString()}</span>
+            <span className="truncate">Client: {task.client.slice(0, 8)}...</span>
+          </div>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Bounty Card */}
-          <div className="bg-white border border-fiverr-border rounded-xl p-6">
-            <div className="text-center mb-6">
-              <div className="text-4xl font-bold text-fiverr-green mb-1">{task.bounty.toFixed(2)} SOL</div>
-              <div className="text-sm text-fiverr-gray">Bounty Amount</div>
-            </div>
-            
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-fiverr-gray">Escrow Balance:</span>
-                <span className="font-medium text-fiverr-dark">{escrowBalance.toFixed(4)} SOL</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-fiverr-gray">Platform Fee:</span>
-                <span className="font-medium text-fiverr-dark">2.5%</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-fiverr-gray">Agent Receives:</span>
-                <span className="font-medium text-fiverr-green">{(task.bounty * 0.975).toFixed(4)} SOL</span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="mt-6 space-y-3">
-              {!connected ? (
-                <WalletMultiButton className="!w-full !bg-fiverr-green hover:!bg-fiverr-green-dark !rounded !font-semibold !justify-center" />
-              ) : task.status === "open" && !isOwner ? (
-                <button 
-                  onClick={() => alert("Coming soon! Register as an agent first.")}
-                  className="w-full py-3 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded-lg font-semibold transition"
-                >
-                  Claim Task
-                </button>
-              ) : task.status === "in_progress" && isAssignedAgent ? (
-                <button 
-                  onClick={() => alert("Coming soon!")}
-                  className="w-full py-3 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded-lg font-semibold transition"
-                >
-                  Submit Work
-                </button>
-              ) : task.status === "pending_review" && isOwner ? (
-                <div className="space-y-2">
-                  <button 
-                    onClick={() => alert("Coming soon!")}
-                    className="w-full py-3 bg-fiverr-green hover:bg-fiverr-green-dark text-white rounded-lg font-semibold transition"
-                  >
-                    Approve & Pay
-                  </button>
-                  <button 
-                    onClick={() => alert("Coming soon!")}
-                    className="w-full py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition"
-                  >
-                    Reject
-                  </button>
-                </div>
-              ) : isOwner && task.status === "open" ? (
-                <div className="text-center text-fiverr-gray text-sm">
-                  Waiting for an agent to claim this task...
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Client Info */}
-          <div className="bg-white border border-fiverr-border rounded-xl p-6">
-            <h3 className="font-bold text-fiverr-dark mb-4">Client</h3>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-fiverr-green/10 rounded-full flex items-center justify-center">
-                👤
-              </div>
-              <div>
-                <div className="font-medium text-fiverr-dark font-mono text-sm">
-                  {task.client.slice(0, 4)}...{task.client.slice(-4)}
-                </div>
-                {isOwner && (
-                  <span className="text-xs text-fiverr-green">(You)</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Assigned Agent (if any) */}
-          {task.assignedAgent && (
-            <div className="bg-white border border-fiverr-border rounded-xl p-6">
-              <h3 className="font-bold text-fiverr-dark mb-4">Assigned Agent</h3>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center">
-                  🤖
+        {/* Submit Application Button/Form */}
+        {canSubmit && (
+          <div className="bg-gray-800 rounded-xl p-6 mb-6">
+            {!showSubmitForm ? (
+              <button
+                onClick={() => setShowSubmitForm(true)}
+                className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:opacity-90"
+              >
+                🚀 Submit Your Work
+              </button>
+            ) : (
+              <div className="space-y-4">
+                <h3 className="text-xl font-bold text-white mb-4">Submit Your Application</h3>
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">Work URL *</label>
+                  <input
+                    type="url"
+                    value={submitUrl}
+                    onChange={(e) => setSubmitUrl(e.target.value)}
+                    placeholder="https://your-work.com/demo"
+                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                  />
                 </div>
                 <div>
-                  <div className="font-medium text-fiverr-dark font-mono text-sm">
-                    {task.assignedAgent.slice(0, 4)}...{task.assignedAgent.slice(-4)}
+                  <label className="block text-gray-400 text-sm mb-2">Notes (optional)</label>
+                  <textarea
+                    value={submitNotes}
+                    onChange={(e) => setSubmitNotes(e.target.value)}
+                    placeholder="Describe your work, approach, or any relevant details..."
+                    rows={4}
+                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleSubmitApplication}
+                    disabled={submitting || !submitUrl.trim()}
+                    className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50"
+                  >
+                    {submitting ? "Submitting..." : "Submit Application"}
+                  </button>
+                  <button
+                    onClick={() => setShowSubmitForm(false)}
+                    className="px-6 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {hasSubmitted && task.status === "open" && (
+          <div className="bg-green-500/20 border border-green-500/30 rounded-xl p-4 mb-6">
+            <p className="text-green-400">✅ You have submitted your work for this task!</p>
+          </div>
+        )}
+
+        {/* Submissions List */}
+        <div className="bg-gray-800 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-white mb-4">
+            Submissions ({submissions.length})
+          </h2>
+
+          {submissions.length === 0 ? (
+            <p className="text-gray-400 text-center py-8">
+              No submissions yet. Be the first to submit!
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {submissions.map((submission, idx) => (
+                <div
+                  key={idx}
+                  className={`bg-gray-700/50 rounded-lg p-4 border-2 ${
+                    submission.status === "selected" 
+                      ? "border-green-500" 
+                      : "border-transparent"
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <p className="text-white font-medium">
+                        Agent: {submission.agent.slice(0, 8)}...{submission.agent.slice(-6)}
+                      </p>
+                      <p className="text-gray-400 text-sm">
+                        Submitted {submission.submittedAt.toLocaleString()}
+                      </p>
+                    </div>
+                    {submission.status === "selected" ? (
+                      <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium">
+                        🏆 WINNER
+                      </span>
+                    ) : canSelectWinner ? (
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map((rating) => (
+                          <button
+                            key={rating}
+                            onClick={() => handleSelectWinner(submission.agent, rating)}
+                            disabled={selectingWinner !== null}
+                            className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-500 disabled:opacity-50"
+                            title={`Select as winner with ${rating} star rating`}
+                          >
+                            {selectingWinner === submission.agent ? "..." : `⭐${rating}`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  {isAssignedAgent && (
-                    <span className="text-xs text-fiverr-green">(You)</span>
+                  
+                  <div className="mb-2">
+                    <p className="text-gray-400 text-sm">Work URL:</p>
+                    <a
+                      href={submission.submissionUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-400 hover:text-purple-300 break-all"
+                    >
+                      {submission.submissionUrl}
+                    </a>
+                  </div>
+
+                  {submission.submissionNotes && (
+                    <div>
+                      <p className="text-gray-400 text-sm">Notes:</p>
+                      <p className="text-white">{submission.submissionNotes}</p>
+                    </div>
                   )}
                 </div>
-              </div>
+              ))}
             </div>
           )}
-
-          {/* Task PDAs */}
-          <div className="bg-fiverr-background border border-fiverr-border rounded-xl p-4 text-xs">
-            <div className="font-semibold text-fiverr-dark mb-2">On-Chain Info</div>
-            <div className="space-y-1 text-fiverr-gray font-mono break-all">
-              <div>Task ID: {task.id}</div>
-              <div>Deadline: {task.deadline.toISOString()}</div>
-            </div>
-          </div>
         </div>
+
+        {/* Info for unconnected users */}
+        {!connected && task.status === "open" && (
+          <div className="mt-6 bg-yellow-500/20 border border-yellow-500/30 rounded-xl p-4 text-center">
+            <p className="text-yellow-400">
+              Connect your wallet to submit your work for this task!
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

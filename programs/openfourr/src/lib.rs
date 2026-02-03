@@ -10,7 +10,7 @@ pub mod openfourr {
     pub fn initialize(ctx: Context<Initialize>, platform_fee_bps: u16) -> Result<()> {
         let platform = &mut ctx.accounts.platform;
         platform.authority = ctx.accounts.authority.key();
-        platform.fee_bps = platform_fee_bps; // e.g., 250 = 2.5%
+        platform.fee_bps = platform_fee_bps;
         platform.total_tasks = 0;
         platform.total_completed = 0;
         platform.total_volume = 0;
@@ -92,7 +92,7 @@ pub mod openfourr {
         require!(title.len() <= 100, OpenfourrError::TitleTooLong);
         require!(description.len() <= 2000, OpenfourrError::DescriptionTooLong);
         require!(bounty_amount > 0, OpenfourrError::InvalidBounty);
-        require!(deadline_hours > 0 && deadline_hours <= 720, OpenfourrError::InvalidDeadline); // max 30 days
+        require!(deadline_hours > 0 && deadline_hours <= 720, OpenfourrError::InvalidDeadline);
 
         let task = &mut ctx.accounts.task;
         let platform = &mut ctx.accounts.platform;
@@ -117,10 +117,8 @@ pub mod openfourr {
         task.created_at = Clock::get()?.unix_timestamp;
         task.deadline = Clock::get()?.unix_timestamp + (deadline_hours as i64 * 3600);
         task.status = TaskStatus::Open;
-        task.assigned_agent = None;
-        task.submission_url = None;
-        task.submission_notes = None;
-        task.rating = None;
+        task.submission_count = 0;
+        task.winning_submission = None;
         task.bump = ctx.bumps.task;
         task.escrow_bump = ctx.bumps.escrow;
 
@@ -137,95 +135,104 @@ pub mod openfourr {
         Ok(())
     }
 
-    /// Agent claims a task
-    pub fn claim_task(ctx: Context<ClaimTask>) -> Result<()> {
-        let task = &mut ctx.accounts.task;
-        let agent = &ctx.accounts.agent_profile;
-
-        require!(task.status == TaskStatus::Open, OpenfourrError::TaskNotOpen);
-        require!(agent.is_active, OpenfourrError::AgentNotActive);
-        require!(Clock::get()?.unix_timestamp < task.deadline, OpenfourrError::TaskExpired);
-
-        task.status = TaskStatus::InProgress;
-        task.assigned_agent = Some(agent.owner);
-        task.claimed_at = Some(Clock::get()?.unix_timestamp);
-
-        emit!(TaskClaimed {
-            task_id: task.id,
-            agent: agent.owner,
-        });
-
-        Ok(())
-    }
-
-    /// Agent submits completed work
-    pub fn submit_work(
-        ctx: Context<SubmitWork>,
+    /// Submit work/application for a task (competition model)
+    /// Any registered agent can submit - multiple submissions allowed per task
+    pub fn submit_application(
+        ctx: Context<SubmitApplication>,
         submission_url: String,
         submission_notes: String,
     ) -> Result<()> {
         let task = &mut ctx.accounts.task;
+        let agent = &ctx.accounts.agent_profile;
+        let submission = &mut ctx.accounts.submission;
 
-        require!(task.status == TaskStatus::InProgress, OpenfourrError::TaskNotInProgress);
-        require!(
-            task.assigned_agent == Some(ctx.accounts.agent_owner.key()),
-            OpenfourrError::NotAssignedAgent
-        );
+        require!(task.status == TaskStatus::Open, OpenfourrError::TaskNotOpen);
+        require!(agent.is_active, OpenfourrError::AgentNotActive);
+        require!(Clock::get()?.unix_timestamp < task.deadline, OpenfourrError::TaskExpired);
         require!(submission_url.len() <= 500, OpenfourrError::UrlTooLong);
 
-        task.submission_url = Some(submission_url);
-        task.submission_notes = Some(submission_notes);
-        task.status = TaskStatus::PendingReview;
-        task.submitted_at = Some(Clock::get()?.unix_timestamp);
+        submission.task_id = task.id;
+        submission.agent = agent.owner;
+        submission.submission_url = submission_url.clone();
+        submission.submission_notes = submission_notes;
+        submission.submitted_at = Clock::get()?.unix_timestamp;
+        submission.status = SubmissionStatus::Pending;
+        submission.bump = ctx.bumps.submission;
 
-        emit!(WorkSubmitted {
+        task.submission_count += 1;
+
+        emit!(ApplicationSubmitted {
             task_id: task.id,
-            agent: ctx.accounts.agent_owner.key(),
+            agent: agent.owner,
+            submission_url,
         });
 
         Ok(())
     }
 
-    /// AI Judge or Client approves the work - releases payment
-    pub fn approve_work(ctx: Context<ApproveWork>, rating: u8) -> Result<()> {
+    /// Task creator selects a winning submission and pays the agent
+    pub fn select_winner(
+        ctx: Context<SelectWinner>,
+        rating: u8,
+    ) -> Result<()> {
+        require!(rating >= 1 && rating <= 5, OpenfourrError::InvalidRating);
+
         let task = &mut ctx.accounts.task;
+        let submission = &mut ctx.accounts.submission;
         let agent = &mut ctx.accounts.agent_profile;
         let platform = &mut ctx.accounts.platform;
 
-        require!(task.status == TaskStatus::PendingReview, OpenfourrError::TaskNotPendingReview);
-        require!(rating >= 1 && rating <= 5, OpenfourrError::InvalidRating);
+        require!(task.status == TaskStatus::Open, OpenfourrError::TaskNotOpen);
+        require!(submission.status == SubmissionStatus::Pending, OpenfourrError::SubmissionNotPending);
+        require!(task.client == ctx.accounts.client.key(), OpenfourrError::NotTaskClient);
 
-        // Calculate fees
-        let platform_fee = (task.bounty_amount * platform.fee_bps as u64) / 10000;
-        let agent_payout = task.bounty_amount - platform_fee;
+        // Calculate payout
+        let fee = task.bounty_amount * (platform.fee_bps as u64) / 10000;
+        let payout = task.bounty_amount - fee;
 
         // Transfer from escrow to agent
         let task_id_bytes = task.id.to_le_bytes();
-        let escrow_bump = [task.escrow_bump];
-        let _seeds = &[
+        let escrow_seeds = &[
             b"escrow".as_ref(),
             task_id_bytes.as_ref(),
-            escrow_bump.as_ref(),
+            &[task.escrow_bump],
         ];
+        let signer_seeds = &[&escrow_seeds[..]];
 
-        // Pay agent
-        **ctx.accounts.escrow.to_account_info().try_borrow_mut_lamports()? -= agent_payout;
-        **ctx.accounts.agent_wallet.to_account_info().try_borrow_mut_lamports()? += agent_payout;
+        let cpi_context = CpiContext::new_with_signer(
+            ctx.accounts.system_program.to_account_info(),
+            anchor_lang::system_program::Transfer {
+                from: ctx.accounts.escrow.to_account_info(),
+                to: ctx.accounts.agent_wallet.to_account_info(),
+            },
+            signer_seeds,
+        );
+        anchor_lang::system_program::transfer(cpi_context, payout)?;
 
-        // Pay platform fee
-        if platform_fee > 0 {
-            **ctx.accounts.escrow.to_account_info().try_borrow_mut_lamports()? -= platform_fee;
-            **ctx.accounts.platform_treasury.to_account_info().try_borrow_mut_lamports()? += platform_fee;
+        // Transfer fee to platform treasury
+        if fee > 0 {
+            let fee_context = CpiContext::new_with_signer(
+                ctx.accounts.system_program.to_account_info(),
+                anchor_lang::system_program::Transfer {
+                    from: ctx.accounts.escrow.to_account_info(),
+                    to: ctx.accounts.platform_treasury.to_account_info(),
+                },
+                signer_seeds,
+            );
+            anchor_lang::system_program::transfer(fee_context, fee)?;
         }
+
+        // Update submission status
+        submission.status = SubmissionStatus::Selected;
 
         // Update task
         task.status = TaskStatus::Completed;
-        task.rating = Some(rating);
+        task.winning_submission = Some(ctx.accounts.submission.key());
         task.completed_at = Some(Clock::get()?.unix_timestamp);
 
         // Update agent stats
         agent.tasks_completed += 1;
-        agent.total_earned += agent_payout;
+        agent.total_earned += payout;
         agent.rating_sum += rating as u64;
         agent.rating_count += 1;
 
@@ -233,45 +240,41 @@ pub mod openfourr {
         platform.total_completed += 1;
         platform.total_volume += task.bounty_amount;
 
-        emit!(TaskCompleted {
+        emit!(WinnerSelected {
             task_id: task.id,
             agent: agent.owner,
-            payout: agent_payout,
+            payout,
             rating,
         });
 
         Ok(())
     }
 
-    /// Reject work - agent can resubmit or task goes back to open
-    pub fn reject_work(ctx: Context<RejectWork>, reason: String) -> Result<()> {
-        let task = &mut ctx.accounts.task;
-
-        require!(task.status == TaskStatus::PendingReview, OpenfourrError::TaskNotPendingReview);
-
-        task.status = TaskStatus::Rejected;
-        task.rejection_reason = Some(reason.clone());
-
-        emit!(WorkRejected {
-            task_id: task.id,
-            reason,
-        });
-
-        Ok(())
-    }
-
-    /// Cancel task (only if not claimed) - refund to client
+    /// Cancel task and refund bounty (only if no submissions yet)
     pub fn cancel_task(ctx: Context<CancelTask>) -> Result<()> {
         let task = &mut ctx.accounts.task;
 
-        require!(
-            task.status == TaskStatus::Open || task.status == TaskStatus::Rejected,
-            OpenfourrError::CannotCancel
-        );
+        require!(task.status == TaskStatus::Open, OpenfourrError::CannotCancel);
+        require!(task.submission_count == 0, OpenfourrError::HasSubmissions);
 
-        // Refund from escrow to client
-        **ctx.accounts.escrow.to_account_info().try_borrow_mut_lamports()? -= task.bounty_amount;
-        **ctx.accounts.client.to_account_info().try_borrow_mut_lamports()? += task.bounty_amount;
+        // Refund bounty from escrow to client
+        let task_id_bytes = task.id.to_le_bytes();
+        let escrow_seeds = &[
+            b"escrow".as_ref(),
+            task_id_bytes.as_ref(),
+            &[task.escrow_bump],
+        ];
+        let signer_seeds = &[&escrow_seeds[..]];
+
+        let cpi_context = CpiContext::new_with_signer(
+            ctx.accounts.system_program.to_account_info(),
+            anchor_lang::system_program::Transfer {
+                from: ctx.accounts.escrow.to_account_info(),
+                to: ctx.accounts.client.to_account_info(),
+            },
+            signer_seeds,
+        );
+        anchor_lang::system_program::transfer(cpi_context, task.bounty_amount)?;
 
         task.status = TaskStatus::Cancelled;
 
@@ -281,9 +284,28 @@ pub mod openfourr {
 
         Ok(())
     }
+
+    // Legacy claim_task - kept for backward compatibility but not recommended
+    pub fn claim_task(ctx: Context<ClaimTask>) -> Result<()> {
+        let task = &mut ctx.accounts.task;
+        let agent = &ctx.accounts.agent_profile;
+
+        require!(task.status == TaskStatus::Open, OpenfourrError::TaskNotOpen);
+        require!(agent.is_active, OpenfourrError::AgentNotActive);
+        require!(Clock::get()?.unix_timestamp < task.deadline, OpenfourrError::TaskExpired);
+
+        task.status = TaskStatus::InProgress;
+
+        emit!(TaskClaimed {
+            task_id: task.id,
+            agent: agent.owner,
+        });
+
+        Ok(())
+    }
 }
 
-// ============ ACCOUNTS ============
+// ============ CONTEXTS ============
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -321,7 +343,6 @@ pub struct UpdateAgent<'info> {
         mut,
         seeds = [b"agent", owner.key().as_ref()],
         bump = agent_profile.bump,
-        has_one = owner
     )]
     pub agent_profile: Account<'info, AgentProfile>,
     pub owner: Signer<'info>,
@@ -340,14 +361,94 @@ pub struct CreateTask<'info> {
     #[account(
         mut,
         seeds = [b"platform"],
-        bump = platform.bump
+        bump = platform.bump,
     )]
     pub platform: Account<'info, Platform>,
-    /// CHECK: Escrow PDA for holding bounty
+    /// CHECK: Escrow PDA to hold bounty
     #[account(
         mut,
         seeds = [b"escrow", platform.total_tasks.to_le_bytes().as_ref()],
         bump
+    )]
+    pub escrow: AccountInfo<'info>,
+    #[account(mut)]
+    pub client: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SubmitApplication<'info> {
+    #[account(
+        init,
+        payer = agent_owner,
+        space = 8 + Submission::INIT_SPACE,
+        seeds = [b"submission", task.key().as_ref(), agent_owner.key().as_ref()],
+        bump
+    )]
+    pub submission: Account<'info, Submission>,
+    #[account(mut)]
+    pub task: Account<'info, Task>,
+    #[account(
+        seeds = [b"agent", agent_owner.key().as_ref()],
+        bump = agent_profile.bump,
+    )]
+    pub agent_profile: Account<'info, AgentProfile>,
+    #[account(mut)]
+    pub agent_owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SelectWinner<'info> {
+    #[account(mut)]
+    pub task: Account<'info, Task>,
+    #[account(
+        mut,
+        constraint = submission.task_id == task.id,
+    )]
+    pub submission: Account<'info, Submission>,
+    #[account(
+        mut,
+        seeds = [b"agent", submission.agent.as_ref()],
+        bump = agent_profile.bump,
+    )]
+    pub agent_profile: Account<'info, AgentProfile>,
+    /// CHECK: Agent's wallet to receive payment
+    #[account(mut, constraint = agent_wallet.key() == submission.agent)]
+    pub agent_wallet: AccountInfo<'info>,
+    /// CHECK: Escrow PDA
+    #[account(
+        mut,
+        seeds = [b"escrow", task.id.to_le_bytes().as_ref()],
+        bump = task.escrow_bump,
+    )]
+    pub escrow: AccountInfo<'info>,
+    #[account(
+        mut,
+        seeds = [b"platform"],
+        bump = platform.bump,
+    )]
+    pub platform: Account<'info, Platform>,
+    /// CHECK: Platform treasury
+    #[account(mut, constraint = platform_treasury.key() == platform.authority)]
+    pub platform_treasury: AccountInfo<'info>,
+    #[account(mut, constraint = client.key() == task.client)]
+    pub client: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CancelTask<'info> {
+    #[account(
+        mut,
+        constraint = task.client == client.key(),
+    )]
+    pub task: Account<'info, Task>,
+    /// CHECK: Escrow PDA
+    #[account(
+        mut,
+        seeds = [b"escrow", task.id.to_le_bytes().as_ref()],
+        bump = task.escrow_bump,
     )]
     pub escrow: AccountInfo<'info>,
     #[account(mut)]
@@ -361,65 +462,10 @@ pub struct ClaimTask<'info> {
     pub task: Account<'info, Task>,
     #[account(
         seeds = [b"agent", agent_owner.key().as_ref()],
-        bump = agent_profile.bump
+        bump = agent_profile.bump,
     )]
     pub agent_profile: Account<'info, AgentProfile>,
     pub agent_owner: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct SubmitWork<'info> {
-    #[account(mut)]
-    pub task: Account<'info, Task>,
-    pub agent_owner: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ApproveWork<'info> {
-    #[account(mut)]
-    pub task: Account<'info, Task>,
-    #[account(
-        mut,
-        seeds = [b"agent", agent_profile.owner.as_ref()],
-        bump = agent_profile.bump
-    )]
-    pub agent_profile: Account<'info, AgentProfile>,
-    /// CHECK: Agent's wallet to receive payment
-    #[account(mut)]
-    pub agent_wallet: AccountInfo<'info>,
-    /// CHECK: Escrow holding the bounty
-    #[account(mut)]
-    pub escrow: AccountInfo<'info>,
-    #[account(
-        mut,
-        seeds = [b"platform"],
-        bump = platform.bump
-    )]
-    pub platform: Account<'info, Platform>,
-    /// CHECK: Platform treasury for fees
-    #[account(mut)]
-    pub platform_treasury: AccountInfo<'info>,
-    /// Either client or authorized judge
-    pub approver: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct RejectWork<'info> {
-    #[account(mut)]
-    pub task: Account<'info, Task>,
-    /// Either client or authorized judge
-    pub rejector: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct CancelTask<'info> {
-    #[account(mut, has_one = client)]
-    pub task: Account<'info, Task>,
-    /// CHECK: Escrow holding the bounty
-    #[account(mut)]
-    pub escrow: AccountInfo<'info>,
-    #[account(mut)]
-    pub client: Signer<'info>,
 }
 
 // ============ STATE ============
@@ -428,10 +474,10 @@ pub struct CancelTask<'info> {
 #[derive(InitSpace)]
 pub struct Platform {
     pub authority: Pubkey,
-    pub fee_bps: u16,           // Platform fee in basis points (e.g., 250 = 2.5%)
+    pub fee_bps: u16,
     pub total_tasks: u64,
     pub total_completed: u64,
-    pub total_volume: u64,      // Total SOL transacted
+    pub total_volume: u64,
     pub bump: u8,
 }
 
@@ -445,7 +491,7 @@ pub struct AgentProfile {
     pub bio: String,
     #[max_len(10, 32)]
     pub skills: Vec<String>,
-    pub hourly_rate: u64,       // In lamports
+    pub hourly_rate: u64,
     pub tasks_completed: u64,
     pub tasks_failed: u64,
     pub total_earned: u64,
@@ -473,30 +519,43 @@ pub struct Task {
     pub created_at: i64,
     pub deadline: i64,
     pub status: TaskStatus,
-    pub assigned_agent: Option<Pubkey>,
-    pub claimed_at: Option<i64>,
-    pub submitted_at: Option<i64>,
+    pub submission_count: u64,           // Number of submissions
+    pub winning_submission: Option<Pubkey>, // PDA of winning submission
     pub completed_at: Option<i64>,
-    #[max_len(500)]
-    pub submission_url: Option<String>,
-    #[max_len(1000)]
-    pub submission_notes: Option<String>,
-    #[max_len(500)]
-    pub rejection_reason: Option<String>,
-    pub rating: Option<u8>,
     pub bump: u8,
     pub escrow_bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Submission {
+    pub task_id: u64,
+    pub agent: Pubkey,
+    #[max_len(500)]
+    pub submission_url: String,
+    #[max_len(1000)]
+    pub submission_notes: String,
+    pub submitted_at: i64,
+    pub status: SubmissionStatus,
+    pub bump: u8,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
 pub enum TaskStatus {
     Open,
-    InProgress,
-    PendingReview,
+    InProgress,  // Legacy - kept for backward compatibility
+    PendingReview, // Legacy
     Completed,
-    Rejected,
+    Rejected,    // Legacy
     Cancelled,
-    Disputed,
+    Disputed,    // Legacy
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum SubmissionStatus {
+    Pending,
+    Selected,
+    NotSelected,
 }
 
 // ============ EVENTS ============
@@ -517,23 +576,18 @@ pub struct TaskClaimed {
 }
 
 #[event]
-pub struct WorkSubmitted {
+pub struct ApplicationSubmitted {
     pub task_id: u64,
     pub agent: Pubkey,
+    pub submission_url: String,
 }
 
 #[event]
-pub struct TaskCompleted {
+pub struct WinnerSelected {
     pub task_id: u64,
     pub agent: Pubkey,
     pub payout: u64,
     pub rating: u8,
-}
-
-#[event]
-pub struct WorkRejected {
-    pub task_id: u64,
-    pub reason: String,
 }
 
 #[event]
@@ -577,4 +631,10 @@ pub enum OpenfourrError {
     InvalidRating,
     #[msg("Cannot cancel task in current status")]
     CannotCancel,
+    #[msg("Task has submissions, cannot cancel")]
+    HasSubmissions,
+    #[msg("Not the task client")]
+    NotTaskClient,
+    #[msg("Submission is not pending")]
+    SubmissionNotPending,
 }

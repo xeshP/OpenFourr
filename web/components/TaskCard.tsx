@@ -1,108 +1,64 @@
 "use client";
 
+import { Task } from "@/lib/useProgram";
 import Link from "next/link";
 
-interface Task {
-  id: number;
-  title: string;
-  description: string;
-  category: string;
-  bounty: number;
-  deadline: string;
-  status: string;
-  client: string;
-  agent?: string;
-  image?: string;
-}
-
-interface Props {
+interface TaskCardProps {
   task: Task;
 }
 
-const statusColors: Record<string, string> = {
-  open: "bg-fiverr-green/10 text-fiverr-green",
-  in_progress: "bg-amber-100 text-amber-700",
-  pending_review: "bg-blue-100 text-blue-700",
-  completed: "bg-gray-100 text-gray-700",
-  rejected: "bg-red-100 text-red-700",
-  cancelled: "bg-gray-100 text-gray-500",
-};
+export default function TaskCard({ task }: TaskCardProps) {
+  const statusColors: Record<string, string> = {
+    open: "bg-green-500/20 text-green-400 border-green-500/30",
+    in_progress: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    pending_review: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    completed: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+    cancelled: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+    rejected: "bg-red-500/20 text-red-400 border-red-500/30",
+  };
 
-const statusLabels: Record<string, string> = {
-  open: "Open",
-  in_progress: "In Progress",
-  pending_review: "Review",
-  completed: "Completed",
-  rejected: "Rejected",
-  cancelled: "Cancelled",
-};
+  const timeLeft = task.deadline.getTime() - Date.now();
+  const hoursLeft = Math.max(0, Math.floor(timeLeft / (1000 * 60 * 60)));
+  const isExpired = timeLeft <= 0;
 
-const categoryImages: Record<string, string> = {
-  "Web Development": "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80",
-  "Research": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&q=80",
-  "Bots & Automation": "https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&q=80",
-  "Smart Contracts": "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400&q=80",
-  "Design": "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&q=80",
-  "Writing": "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?w=400&q=80",
-};
-
-export function TaskCard({ task }: Props) {
-  const image = task.image || categoryImages[task.category] || categoryImages["Research"];
-  
   return (
     <Link href={`/tasks/${task.id}`}>
-      <div className="bg-white border border-fiverr-border rounded-lg overflow-hidden card-hover cursor-pointer">
-        {/* Image */}
-        <div className="relative h-40 bg-fiverr-background">
-          <img 
-            src={image} 
-            alt={task.title}
-            className="w-full h-full object-cover"
-          />
-          <span className={`absolute top-3 left-3 px-2 py-1 rounded text-xs font-medium ${statusColors[task.status] || statusColors.open}`}>
-            {statusLabels[task.status] || task.status}
+      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 hover:border-purple-500/50 transition-all cursor-pointer">
+        {/* Header */}
+        <div className="flex justify-between items-start mb-4">
+          <h3 className="text-lg font-semibold text-white line-clamp-1">{task.title}</h3>
+          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${statusColors[task.status] || "bg-gray-500/20 text-gray-400 border-gray-500/30"}`}>
+            {task.status.replace("_", " ").toUpperCase()}
           </span>
         </div>
 
-        {/* Content */}
-        <div className="p-4">
-          {/* Client info */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-6 h-6 rounded-full bg-fiverr-green/20 flex items-center justify-center text-xs">
-              👤
-            </div>
-            <span className="text-xs text-fiverr-gray font-mono">{task.client}</span>
-          </div>
+        {/* Description */}
+        <p className="text-gray-400 text-sm mb-4 line-clamp-2">{task.description}</p>
 
-          {/* Title */}
-          <h3 className="font-medium text-fiverr-dark line-clamp-2 mb-2 hover:text-fiverr-green transition">
-            {task.title}
-          </h3>
-
-          {/* Category & Deadline */}
-          <div className="flex items-center gap-2 text-xs text-fiverr-gray mb-3">
-            <span className="px-2 py-0.5 bg-fiverr-background rounded">{task.category}</span>
-            <span>•</span>
-            <span>⏱️ {task.deadline}</span>
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="bg-gray-700/50 rounded-lg p-2 text-center">
+            <p className="text-green-400 font-bold">{task.bounty} SOL</p>
+            <p className="text-gray-500 text-xs">Bounty</p>
           </div>
-
-          {/* Footer */}
-          <div className="pt-3 border-t border-fiverr-border flex justify-between items-center">
-            <div>
-              <span className="text-xs text-fiverr-gray">Bounty</span>
-              <div className="font-bold text-lg text-fiverr-dark">{task.bounty} SOL</div>
-            </div>
-            {task.status === "open" ? (
-              <button className="px-4 py-2 bg-fiverr-green hover:bg-fiverr-green-dark text-white text-sm rounded font-medium transition">
-                Claim
-              </button>
-            ) : task.agent ? (
-              <div className="flex items-center gap-1 text-sm text-fiverr-gray">
-                <span>🤖</span>
-                <span>{task.agent}</span>
-              </div>
-            ) : null}
+          <div className="bg-gray-700/50 rounded-lg p-2 text-center">
+            <p className={`font-bold ${isExpired ? 'text-red-400' : 'text-blue-400'}`}>
+              {isExpired ? 'Expired' : `${hoursLeft}h`}
+            </p>
+            <p className="text-gray-500 text-xs">Time Left</p>
           </div>
+          <div className="bg-gray-700/50 rounded-lg p-2 text-center">
+            <p className="text-purple-400 font-bold">{task.submissionCount || 0}</p>
+            <p className="text-gray-500 text-xs">Submissions</p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between text-sm">
+          <span className="bg-gray-700 px-2 py-1 rounded text-gray-400">{task.category}</span>
+          <span className="text-gray-500">
+            {task.createdAt.toLocaleDateString()}
+          </span>
         </div>
       </div>
     </Link>

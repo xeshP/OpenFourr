@@ -8,100 +8,9 @@
   },
   "instructions": [
     {
-      "name": "approve_work",
-      "docs": [
-        "AI Judge or Client approves the work - releases payment"
-      ],
-      "discriminator": [
-        181,
-        118,
-        45,
-        143,
-        204,
-        88,
-        237,
-        109
-      ],
-      "accounts": [
-        {
-          "name": "task",
-          "writable": true
-        },
-        {
-          "name": "agent_profile",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  103,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "agent_profile.owner",
-                "account": "AgentProfile"
-              }
-            ]
-          }
-        },
-        {
-          "name": "agent_wallet",
-          "writable": true
-        },
-        {
-          "name": "escrow",
-          "writable": true
-        },
-        {
-          "name": "platform",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  108,
-                  97,
-                  116,
-                  102,
-                  111,
-                  114,
-                  109
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "platform_treasury",
-          "writable": true
-        },
-        {
-          "name": "approver",
-          "docs": [
-            "Either client or authorized judge"
-          ],
-          "signer": true
-        }
-      ],
-      "args": [
-        {
-          "name": "rating",
-          "type": "u8"
-        }
-      ]
-    },
-    {
       "name": "cancel_task",
       "docs": [
-        "Cancel task (only if not claimed) - refund to client"
+        "Cancel task and refund bounty (only if no submissions yet)"
       ],
       "discriminator": [
         69,
@@ -120,24 +29,42 @@
         },
         {
           "name": "escrow",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task.id",
+                "account": "Task"
+              }
+            ]
+          }
         },
         {
           "name": "client",
           "writable": true,
-          "signer": true,
-          "relations": [
-            "task"
-          ]
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
     },
     {
       "name": "claim_task",
-      "docs": [
-        "Agent claims a task"
-      ],
       "discriminator": [
         49,
         222,
@@ -425,19 +352,19 @@
       ]
     },
     {
-      "name": "reject_work",
+      "name": "select_winner",
       "docs": [
-        "Reject work - agent can resubmit or task goes back to open"
+        "Task creator selects a winning submission and pays the agent"
       ],
       "discriminator": [
-        129,
-        238,
-        59,
-        133,
-        63,
-        148,
-        130,
-        54
+        119,
+        66,
+        44,
+        236,
+        79,
+        158,
+        82,
+        51
       ],
       "accounts": [
         {
@@ -445,43 +372,183 @@
           "writable": true
         },
         {
-          "name": "rejector",
-          "docs": [
-            "Either client or authorized judge"
-          ],
+          "name": "submission",
+          "writable": true
+        },
+        {
+          "name": "agent_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "submission.agent",
+                "account": "Submission"
+              }
+            ]
+          }
+        },
+        {
+          "name": "agent_wallet",
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task.id",
+                "account": "Task"
+              }
+            ]
+          }
+        },
+        {
+          "name": "platform",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  116,
+                  102,
+                  111,
+                  114,
+                  109
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "platform_treasury",
+          "writable": true
+        },
+        {
+          "name": "client",
+          "writable": true,
           "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
         {
-          "name": "reason",
-          "type": "string"
+          "name": "rating",
+          "type": "u8"
         }
       ]
     },
     {
-      "name": "submit_work",
+      "name": "submit_application",
       "docs": [
-        "Agent submits completed work"
+        "Submit work/application for a task (competition model)",
+        "Any registered agent can submit - multiple submissions allowed per task"
       ],
       "discriminator": [
-        158,
-        80,
-        101,
-        51,
-        114,
-        130,
-        101,
-        253
+        27,
+        71,
+        89,
+        170,
+        144,
+        203,
+        50,
+        8
       ],
       "accounts": [
+        {
+          "name": "submission",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  117,
+                  98,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "task"
+              },
+              {
+                "kind": "account",
+                "path": "agent_owner"
+              }
+            ]
+          }
+        },
         {
           "name": "task",
           "writable": true
         },
         {
+          "name": "agent_profile",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "agent_owner"
+              }
+            ]
+          }
+        },
+        {
           "name": "agent_owner",
+          "writable": true,
           "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -535,10 +602,7 @@
         },
         {
           "name": "owner",
-          "signer": true,
-          "relations": [
-            "agent_profile"
-          ]
+          "signer": true
         }
       ],
       "args": [
@@ -605,6 +669,19 @@
       ]
     },
     {
+      "name": "Submission",
+      "discriminator": [
+        58,
+        194,
+        159,
+        158,
+        75,
+        102,
+        178,
+        197
+      ]
+    },
+    {
       "name": "Task",
       "discriminator": [
         79,
@@ -619,6 +696,19 @@
     }
   ],
   "events": [
+    {
+      "name": "ApplicationSubmitted",
+      "discriminator": [
+        202,
+        125,
+        149,
+        115,
+        111,
+        233,
+        172,
+        132
+      ]
+    },
     {
       "name": "TaskCancelled",
       "discriminator": [
@@ -646,19 +736,6 @@
       ]
     },
     {
-      "name": "TaskCompleted",
-      "discriminator": [
-        132,
-        223,
-        98,
-        152,
-        2,
-        9,
-        57,
-        128
-      ]
-    },
-    {
       "name": "TaskCreated",
       "discriminator": [
         49,
@@ -672,29 +749,16 @@
       ]
     },
     {
-      "name": "WorkRejected",
+      "name": "WinnerSelected",
       "discriminator": [
-        155,
-        17,
-        186,
-        185,
-        27,
-        160,
-        202,
-        169
-      ]
-    },
-    {
-      "name": "WorkSubmitted",
-      "discriminator": [
-        136,
-        185,
-        210,
-        174,
-        216,
-        140,
-        64,
-        125
+        245,
+        110,
+        152,
+        173,
+        193,
+        48,
+        133,
+        5
       ]
     }
   ],
@@ -778,6 +842,21 @@
       "code": 6015,
       "name": "CannotCancel",
       "msg": "Cannot cancel task in current status"
+    },
+    {
+      "code": 6016,
+      "name": "HasSubmissions",
+      "msg": "Task has submissions, cannot cancel"
+    },
+    {
+      "code": 6017,
+      "name": "NotTaskClient",
+      "msg": "Not the task client"
+    },
+    {
+      "code": 6018,
+      "name": "SubmissionNotPending",
+      "msg": "Submission is not pending"
     }
   ],
   "types": [
@@ -844,6 +923,26 @@
       }
     },
     {
+      "name": "ApplicationSubmitted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "submission_url",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
       "name": "Platform",
       "type": {
         "kind": "struct",
@@ -871,6 +970,63 @@
           {
             "name": "bump",
             "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Submission",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "submission_url",
+            "type": "string"
+          },
+          {
+            "name": "submission_notes",
+            "type": "string"
+          },
+          {
+            "name": "submitted_at",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "SubmissionStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SubmissionStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Pending"
+          },
+          {
+            "name": "Selected"
+          },
+          {
+            "name": "NotSelected"
           }
         ]
       }
@@ -925,51 +1081,19 @@
             }
           },
           {
-            "name": "assigned_agent",
+            "name": "submission_count",
+            "type": "u64"
+          },
+          {
+            "name": "winning_submission",
             "type": {
               "option": "pubkey"
-            }
-          },
-          {
-            "name": "claimed_at",
-            "type": {
-              "option": "i64"
-            }
-          },
-          {
-            "name": "submitted_at",
-            "type": {
-              "option": "i64"
             }
           },
           {
             "name": "completed_at",
             "type": {
               "option": "i64"
-            }
-          },
-          {
-            "name": "submission_url",
-            "type": {
-              "option": "string"
-            }
-          },
-          {
-            "name": "submission_notes",
-            "type": {
-              "option": "string"
-            }
-          },
-          {
-            "name": "rejection_reason",
-            "type": {
-              "option": "string"
-            }
-          },
-          {
-            "name": "rating",
-            "type": {
-              "option": "u8"
             }
           },
           {
@@ -1007,30 +1131,6 @@
           {
             "name": "agent",
             "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
-      "name": "TaskCompleted",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "task_id",
-            "type": "u64"
-          },
-          {
-            "name": "agent",
-            "type": "pubkey"
-          },
-          {
-            "name": "payout",
-            "type": "u64"
-          },
-          {
-            "name": "rating",
-            "type": "u8"
           }
         ]
       }
@@ -1093,23 +1193,7 @@
       }
     },
     {
-      "name": "WorkRejected",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "task_id",
-            "type": "u64"
-          },
-          {
-            "name": "reason",
-            "type": "string"
-          }
-        ]
-      }
-    },
-    {
-      "name": "WorkSubmitted",
+      "name": "WinnerSelected",
       "type": {
         "kind": "struct",
         "fields": [
@@ -1120,6 +1204,14 @@
           {
             "name": "agent",
             "type": "pubkey"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "rating",
+            "type": "u8"
           }
         ]
       }
