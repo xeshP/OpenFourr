@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 
 interface Task {
   id: number;
@@ -12,6 +13,7 @@ interface Task {
   status: string;
   client: string;
   agent?: string;
+  image?: string;
 }
 
 interface Props {
@@ -19,54 +21,80 @@ interface Props {
 }
 
 const statusColors: Record<string, string> = {
-  open: "bg-green-500/20 text-green-400 border-green-500/30",
-  in_progress: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  pending_review: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  completed: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  open: "bg-fiverr-green/10 text-fiverr-green",
+  in_progress: "bg-amber-100 text-amber-700",
+  pending_review: "bg-blue-100 text-blue-700",
+  completed: "bg-gray-100 text-gray-700",
 };
 
 const statusLabels: Record<string, string> = {
   open: "Open",
   in_progress: "In Progress",
-  pending_review: "Pending Review",
+  pending_review: "Review",
   completed: "Completed",
 };
 
 export function TaskCard({ task }: Props) {
   return (
     <Link href={`/tasks/${task.id}`}>
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 card-hover cursor-pointer">
-        {/* Header */}
-        <div className="flex justify-between items-start mb-4">
-          <span className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-400">
-            {task.category}
-          </span>
-          <span className={`px-3 py-1 rounded-full text-sm border ${statusColors[task.status]}`}>
+      <div className="bg-white border border-fiverr-border rounded-lg overflow-hidden card-hover cursor-pointer">
+        {/* Image */}
+        <div className="relative h-40 bg-fiverr-background">
+          {task.image ? (
+            <img 
+              src={task.image} 
+              alt={task.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-4xl">
+              📋
+            </div>
+          )}
+          <span className={`absolute top-3 left-3 px-2 py-1 rounded text-xs font-medium ${statusColors[task.status]}`}>
             {statusLabels[task.status]}
           </span>
         </div>
 
-        {/* Title */}
-        <h3 className="text-xl font-bold mb-2 line-clamp-2">{task.title}</h3>
-
-        {/* Description */}
-        <p className="text-gray-400 text-sm mb-4 line-clamp-2">{task.description}</p>
-
-        {/* Footer */}
-        <div className="flex justify-between items-center pt-4 border-t border-gray-800">
-          <div>
-            <div className="text-2xl font-bold gradient-text">{task.bounty} SOL</div>
-            <div className="text-xs text-gray-500">⏱️ {task.deadline}</div>
-          </div>
-          {task.status === "open" ? (
-            <button className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition">
-              Claim Task
-            </button>
-          ) : (
-            <div className="text-sm text-gray-400">
-              🤖 {task.agent}
+        {/* Content */}
+        <div className="p-4">
+          {/* Client info */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-full bg-fiverr-green/20 flex items-center justify-center text-xs">
+              👤
             </div>
-          )}
+            <span className="text-xs text-fiverr-gray font-mono">{task.client}</span>
+          </div>
+
+          {/* Title */}
+          <h3 className="font-medium text-fiverr-dark line-clamp-2 mb-2 hover:text-fiverr-green transition">
+            {task.title}
+          </h3>
+
+          {/* Category & Deadline */}
+          <div className="flex items-center gap-2 text-xs text-fiverr-gray mb-3">
+            <span className="px-2 py-0.5 bg-fiverr-background rounded">{task.category}</span>
+            <span>•</span>
+            <span>⏱️ {task.deadline}</span>
+          </div>
+
+          {/* Footer */}
+          <div className="pt-3 border-t border-fiverr-border flex justify-between items-center">
+            <div>
+              <span className="text-xs text-fiverr-gray">Bounty</span>
+              <div className="font-bold text-lg text-fiverr-dark">{task.bounty} SOL</div>
+            </div>
+            {task.status === "open" ? (
+              <button className="px-4 py-2 bg-fiverr-green hover:bg-fiverr-green-dark text-white text-sm rounded font-medium transition">
+                Claim
+              </button>
+            ) : (
+              <div className="flex items-center gap-1 text-sm text-fiverr-gray">
+                <span>🤖</span>
+                <span>{task.agent}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Link>

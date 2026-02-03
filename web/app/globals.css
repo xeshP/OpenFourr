@@ -3,19 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 0, 0, 0;
-  --background-end-rgb: 0, 0, 0;
+  --fiverr-green: #1dbf73;
+  --fiverr-green-dark: #19a463;
+  --fiverr-dark: #404145;
+  --fiverr-gray: #74767e;
+  --fiverr-light-gray: #b5b6ba;
+  --fiverr-border: #e4e5e7;
+  --fiverr-background: #f5f5f5;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: var(--fiverr-dark);
+  background: #ffffff;
 }
 
 /* Custom scrollbar */
@@ -24,37 +23,101 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: #f1f1f1;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4a4a4a;
+  background: #c1c1c1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #5a5a5a;
+  background: #a8a8a8;
 }
 
-/* Gradient text */
+/* Gradient text - Fiverr style */
 .gradient-text {
-  background: linear-gradient(90deg, #9945FF, #14F195);
+  background: linear-gradient(90deg, #1dbf73, #00b22d);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Solana gradient */
-.solana-gradient {
-  background: linear-gradient(90deg, #9945FF, #14F195);
+/* Primary button */
+.btn-primary {
+  background: var(--fiverr-green);
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: var(--fiverr-green-dark);
 }
 
 /* Card hover effect */
 .card-hover {
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
 
 .card-hover:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 40px rgba(153, 69, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+
+/* Fiverr-style category pills */
+.category-pill {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: 1px solid var(--fiverr-border);
+  background: white;
+  color: var(--fiverr-dark);
+}
+
+.category-pill:hover {
+  background: var(--fiverr-background);
+}
+
+.category-pill.active {
+  background: var(--fiverr-green);
+  color: white;
+  border-color: var(--fiverr-green);
+}
+
+/* Search bar */
+.search-bar {
+  border: 2px solid var(--fiverr-border);
+  border-radius: 8px;
+  transition: border-color 0.2s ease;
+}
+
+.search-bar:focus-within {
+  border-color: var(--fiverr-dark);
+}
+
+/* Star rating */
+.star-rating {
+  color: #ffbe5b;
+}
+
+/* Level badge */
+.level-badge {
+  background: linear-gradient(135deg, #f0f0f0, #e0e0e0);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.level-badge.top-rated {
+  background: linear-gradient(135deg, #ffe8b7, #ffd687);
+  color: #7a5c19;
+}
+
+.level-badge.level-2 {
+  background: linear-gradient(135deg, #d3f9d8, #a9f0b3);
+  color: #1a7f37;
 }

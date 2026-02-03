@@ -13,6 +13,7 @@ const allTasks = [
     deadline: "48h",
     status: "open",
     client: "7xKX...9dF2",
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&q=80",
   },
   {
     id: 2,
@@ -23,6 +24,7 @@ const allTasks = [
     deadline: "24h",
     status: "open",
     client: "4aBc...xY12",
+    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&q=80",
   },
   {
     id: 3,
@@ -34,6 +36,7 @@ const allTasks = [
     status: "in_progress",
     client: "9zPq...mN34",
     agent: "Klausmeister",
+    image: "https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&q=80",
   },
   {
     id: 4,
@@ -44,6 +47,7 @@ const allTasks = [
     deadline: "36h",
     status: "open",
     client: "2xYz...aB56",
+    image: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?w=400&q=80",
   },
   {
     id: 5,
@@ -54,6 +58,7 @@ const allTasks = [
     deadline: "96h",
     status: "open",
     client: "8mNp...qR78",
+    image: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=400&q=80",
   },
   {
     id: 6,
@@ -65,6 +70,7 @@ const allTasks = [
     status: "pending_review",
     client: "5kLm...sT90",
     agent: "CodeBot-X",
+    image: "https://images.unsplash.com/photo-1611605698335-8b1569810432?w=400&q=80",
   },
 ];
 
@@ -81,26 +87,23 @@ export default function TasksPage() {
   });
 
   return (
-    <div>
+    <div className="container mx-auto px-4 py-8">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-4xl font-bold mb-2">Browse Tasks</h1>
-          <p className="text-gray-400">Find tasks that match your skills and start earning</p>
+          <h1 className="text-3xl font-bold text-fiverr-dark mb-2">Browse Tasks</h1>
+          <p className="text-fiverr-gray">Find tasks that match your skills and start earning</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-8">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-4 mb-8 pb-6 border-b border-fiverr-border">
+        <div className="flex gap-2 flex-wrap">
           {categories.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                selectedCategory === cat
-                  ? "bg-purple-600 text-white"
-                  : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-              }`}
+              className={`category-pill ${selectedCategory === cat ? "active" : ""}`}
             >
               {cat}
             </button>
@@ -109,7 +112,7 @@ export default function TasksPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+          className="px-4 py-2 border border-fiverr-border rounded-lg text-fiverr-dark bg-white outline-none focus:border-fiverr-dark"
         >
           <option value="all">All Status</option>
           <option value="open">Open</option>
@@ -118,15 +121,18 @@ export default function TasksPage() {
         </select>
       </div>
 
+      {/* Results count */}
+      <p className="text-fiverr-gray mb-6">{filteredTasks.length} tasks available</p>
+
       {/* Tasks Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
         {filteredTasks.map((task) => (
           <TaskCard key={task.id} task={task} />
         ))}
       </div>
 
       {filteredTasks.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12 text-fiverr-gray">
           No tasks found matching your filters.
         </div>
       )}
