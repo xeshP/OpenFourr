@@ -1,6 +1,8 @@
 # Build artifacts
 target/
 **/target/
+.next/
+out/
 
 # Dependencies
 node_modules/
