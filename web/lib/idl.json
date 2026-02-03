@@ -1,0 +1,1128 @@
+{
+  "address": "FBtigfHS7NXnQYgjaGACFY8SVmd3sX2XmsdWna2ak99L",
+  "metadata": {
+    "name": "openfourr",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "AI Agent Marketplace on Solana"
+  },
+  "instructions": [
+    {
+      "name": "approve_work",
+      "docs": [
+        "AI Judge or Client approves the work - releases payment"
+      ],
+      "discriminator": [
+        181,
+        118,
+        45,
+        143,
+        204,
+        88,
+        237,
+        109
+      ],
+      "accounts": [
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "name": "agent_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "agent_profile.owner",
+                "account": "AgentProfile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "agent_wallet",
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "writable": true
+        },
+        {
+          "name": "platform",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  116,
+                  102,
+                  111,
+                  114,
+                  109
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "platform_treasury",
+          "writable": true
+        },
+        {
+          "name": "approver",
+          "docs": [
+            "Either client or authorized judge"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "rating",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "cancel_task",
+      "docs": [
+        "Cancel task (only if not claimed) - refund to client"
+      ],
+      "discriminator": [
+        69,
+        228,
+        134,
+        187,
+        134,
+        105,
+        238,
+        48
+      ],
+      "accounts": [
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "name": "escrow",
+          "writable": true
+        },
+        {
+          "name": "client",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "task"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_task",
+      "docs": [
+        "Agent claims a task"
+      ],
+      "discriminator": [
+        49,
+        222,
+        219,
+        238,
+        155,
+        68,
+        221,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "name": "agent_profile",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "agent_owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "agent_owner",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_task",
+      "docs": [
+        "Create a new task with bounty (human posts task)"
+      ],
+      "discriminator": [
+        194,
+        80,
+        6,
+        180,
+        232,
+        127,
+        48,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "task",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  97,
+                  115,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "platform.total_tasks",
+                "account": "Platform"
+              }
+            ]
+          }
+        },
+        {
+          "name": "platform",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  116,
+                  102,
+                  111,
+                  114,
+                  109
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "platform.total_tasks",
+                "account": "Platform"
+              }
+            ]
+          }
+        },
+        {
+          "name": "client",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "requirements",
+          "type": "string"
+        },
+        {
+          "name": "category",
+          "type": "string"
+        },
+        {
+          "name": "bounty_amount",
+          "type": "u64"
+        },
+        {
+          "name": "deadline_hours",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize",
+      "docs": [
+        "Initialize the platform (one-time setup)"
+      ],
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "platform",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  116,
+                  102,
+                  111,
+                  114,
+                  109
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "platform_fee_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "register_agent",
+      "docs": [
+        "Register a new agent profile"
+      ],
+      "discriminator": [
+        135,
+        157,
+        66,
+        195,
+        2,
+        113,
+        175,
+        30
+      ],
+      "accounts": [
+        {
+          "name": "agent_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "bio",
+          "type": "string"
+        },
+        {
+          "name": "skills",
+          "type": {
+            "vec": "string"
+          }
+        },
+        {
+          "name": "hourly_rate",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "reject_work",
+      "docs": [
+        "Reject work - agent can resubmit or task goes back to open"
+      ],
+      "discriminator": [
+        129,
+        238,
+        59,
+        133,
+        63,
+        148,
+        130,
+        54
+      ],
+      "accounts": [
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "name": "rejector",
+          "docs": [
+            "Either client or authorized judge"
+          ],
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "reason",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "submit_work",
+      "docs": [
+        "Agent submits completed work"
+      ],
+      "discriminator": [
+        158,
+        80,
+        101,
+        51,
+        114,
+        130,
+        101,
+        253
+      ],
+      "accounts": [
+        {
+          "name": "task",
+          "writable": true
+        },
+        {
+          "name": "agent_owner",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "submission_url",
+          "type": "string"
+        },
+        {
+          "name": "submission_notes",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "update_agent",
+      "docs": [
+        "Update agent profile"
+      ],
+      "discriminator": [
+        85,
+        2,
+        178,
+        9,
+        119,
+        139,
+        102,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "agent_profile",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  103,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "relations": [
+            "agent_profile"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "bio",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "skills",
+          "type": {
+            "option": {
+              "vec": "string"
+            }
+          }
+        },
+        {
+          "name": "hourly_rate",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "is_active",
+          "type": {
+            "option": "bool"
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "AgentProfile",
+      "discriminator": [
+        60,
+        227,
+        42,
+        24,
+        0,
+        87,
+        86,
+        205
+      ]
+    },
+    {
+      "name": "Platform",
+      "discriminator": [
+        77,
+        92,
+        204,
+        58,
+        187,
+        98,
+        91,
+        12
+      ]
+    },
+    {
+      "name": "Task",
+      "discriminator": [
+        79,
+        34,
+        229,
+        55,
+        88,
+        90,
+        55,
+        84
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "TaskCancelled",
+      "discriminator": [
+        158,
+        101,
+        220,
+        187,
+        16,
+        141,
+        141,
+        64
+      ]
+    },
+    {
+      "name": "TaskClaimed",
+      "discriminator": [
+        208,
+        90,
+        243,
+        116,
+        80,
+        15,
+        228,
+        202
+      ]
+    },
+    {
+      "name": "TaskCompleted",
+      "discriminator": [
+        132,
+        223,
+        98,
+        152,
+        2,
+        9,
+        57,
+        128
+      ]
+    },
+    {
+      "name": "TaskCreated",
+      "discriminator": [
+        49,
+        174,
+        6,
+        7,
+        71,
+        159,
+        69,
+        175
+      ]
+    },
+    {
+      "name": "WorkRejected",
+      "discriminator": [
+        155,
+        17,
+        186,
+        185,
+        27,
+        160,
+        202,
+        169
+      ]
+    },
+    {
+      "name": "WorkSubmitted",
+      "discriminator": [
+        136,
+        185,
+        210,
+        174,
+        216,
+        140,
+        64,
+        125
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "NameTooLong",
+      "msg": "Name exceeds maximum length of 32 characters"
+    },
+    {
+      "code": 6001,
+      "name": "BioTooLong",
+      "msg": "Bio exceeds maximum length of 500 characters"
+    },
+    {
+      "code": 6002,
+      "name": "TooManySkills",
+      "msg": "Too many skills (max 10)"
+    },
+    {
+      "code": 6003,
+      "name": "TitleTooLong",
+      "msg": "Title exceeds maximum length"
+    },
+    {
+      "code": 6004,
+      "name": "DescriptionTooLong",
+      "msg": "Description exceeds maximum length"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidBounty",
+      "msg": "Invalid bounty amount"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidDeadline",
+      "msg": "Invalid deadline"
+    },
+    {
+      "code": 6007,
+      "name": "TaskNotOpen",
+      "msg": "Task is not open"
+    },
+    {
+      "code": 6008,
+      "name": "TaskNotInProgress",
+      "msg": "Task is not in progress"
+    },
+    {
+      "code": 6009,
+      "name": "TaskNotPendingReview",
+      "msg": "Task is not pending review"
+    },
+    {
+      "code": 6010,
+      "name": "AgentNotActive",
+      "msg": "Agent is not active"
+    },
+    {
+      "code": 6011,
+      "name": "TaskExpired",
+      "msg": "Task has expired"
+    },
+    {
+      "code": 6012,
+      "name": "NotAssignedAgent",
+      "msg": "Not the assigned agent"
+    },
+    {
+      "code": 6013,
+      "name": "UrlTooLong",
+      "msg": "URL too long"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidRating",
+      "msg": "Invalid rating (must be 1-5)"
+    },
+    {
+      "code": 6015,
+      "name": "CannotCancel",
+      "msg": "Cannot cancel task in current status"
+    }
+  ],
+  "types": [
+    {
+      "name": "AgentProfile",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "bio",
+            "type": "string"
+          },
+          {
+            "name": "skills",
+            "type": {
+              "vec": "string"
+            }
+          },
+          {
+            "name": "hourly_rate",
+            "type": "u64"
+          },
+          {
+            "name": "tasks_completed",
+            "type": "u64"
+          },
+          {
+            "name": "tasks_failed",
+            "type": "u64"
+          },
+          {
+            "name": "total_earned",
+            "type": "u64"
+          },
+          {
+            "name": "rating_sum",
+            "type": "u64"
+          },
+          {
+            "name": "rating_count",
+            "type": "u64"
+          },
+          {
+            "name": "registered_at",
+            "type": "i64"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Platform",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "total_tasks",
+            "type": "u64"
+          },
+          {
+            "name": "total_completed",
+            "type": "u64"
+          },
+          {
+            "name": "total_volume",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Task",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "client",
+            "type": "pubkey"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "name": "description",
+            "type": "string"
+          },
+          {
+            "name": "requirements",
+            "type": "string"
+          },
+          {
+            "name": "category",
+            "type": "string"
+          },
+          {
+            "name": "bounty_amount",
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "TaskStatus"
+              }
+            }
+          },
+          {
+            "name": "assigned_agent",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "claimed_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "submitted_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "completed_at",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "submission_url",
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "submission_notes",
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "rejection_reason",
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "rating",
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "escrow_bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TaskCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TaskClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TaskCompleted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          },
+          {
+            "name": "rating",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TaskCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          },
+          {
+            "name": "client",
+            "type": "pubkey"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "name": "bounty",
+            "type": "u64"
+          },
+          {
+            "name": "deadline",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TaskStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "InProgress"
+          },
+          {
+            "name": "PendingReview"
+          },
+          {
+            "name": "Completed"
+          },
+          {
+            "name": "Rejected"
+          },
+          {
+            "name": "Cancelled"
+          },
+          {
+            "name": "Disputed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WorkRejected",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          },
+          {
+            "name": "reason",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WorkSubmitted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "task_id",
+            "type": "u64"
+          },
+          {
+            "name": "agent",
+            "type": "pubkey"
+          }
+        ]
+      }
+    }
+  ]
+}

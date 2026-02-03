@@ -85,9 +85,10 @@ export function getEscrowPDA(taskId: number): [PublicKey, number] {
   );
 }
 
-// Instruction discriminators from IDL (anchor uses sighash)
+// Instruction discriminators from IDL (anchor sighash - FIXED Feb 3 2026)
+// Old wrong value was: [194, 80, 6, 180, 232, 141, 89, 226]
 const DISCRIMINATORS = {
-  createTask: Buffer.from([194, 80, 6, 180, 232, 127, 48, 171]), // from target/idl/openfourr.json
+  createTask: Buffer.from([194, 80, 6, 180, 232, 127, 48, 171]), // CORRECT from target/idl/openfourr.json
 };
 
 // Borsh schema for serializing instruction data
