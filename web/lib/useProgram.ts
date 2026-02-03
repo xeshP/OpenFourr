@@ -7,6 +7,7 @@ import {
   LAMPORTS_PER_SOL, 
   Transaction,
   TransactionInstruction,
+  ComputeBudgetProgram,
 } from "@solana/web3.js";
 import { useMemo, useCallback } from "react";
 import { PROGRAM_ID, PLATFORM_SEED, AGENT_SEED, TASK_SEED, ESCROW_SEED } from "./constants";
@@ -224,7 +225,14 @@ export function useProgram() {
       data: instructionData,
     });
 
-    const transaction = new Transaction().add(instruction);
+    // Add compute budget instruction for sufficient compute units
+    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+      units: 300_000,
+    });
+
+    const transaction = new Transaction()
+      .add(computeBudgetIx)
+      .add(instruction);
     transaction.feePayer = wallet.publicKey;
     
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
