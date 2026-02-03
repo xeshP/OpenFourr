@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useProgram, Task, Submission, Message, getTaskPDA, getEscrowPDA } from "@/lib/useProgram";
+import { uploadToIPFS, parseMessageContent, SUPPORTED_TYPES } from "@/lib/ipfs";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import Link from "next/link";
@@ -35,7 +36,9 @@ export default function TaskDetailPage() {
   const [newMessage, setNewMessage] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
   const [activeTab, setActiveTab] = useState<"submissions" | "chat">("submissions");
+  const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTask = useCallback(async () => {
     setLoading(true);
@@ -103,12 +106,13 @@ export default function TaskDetailPage() {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !connected) return;
+  const handleSendMessage = async (content?: string) => {
+    const messageContent = content || newMessage;
+    if (!messageContent.trim() || !connected) return;
     setSendingMessage(true);
     try {
       const hasSubmission = submissions.some(s => publicKey && s.agent === publicKey.toString());
-      await sendMessage(taskId, newMessage, hasSubmission);
+      await sendMessage(taskId, messageContent, hasSubmission);
       setNewMessage("");
       await loadTask();
     } catch (error) {
@@ -119,11 +123,79 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!SUPPORTED_TYPES.includes(file.type)) {
+      alert("Unsupported file type. Use JPG, PNG, GIF, WebP, MP4, or WebM.");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await uploadToIPFS(file);
+      // Send the media URL as a message
+      await handleSendMessage(result.url);
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      alert("Upload failed: " + (error as Error).message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
   const isOwner = publicKey && task && task.client === publicKey.toString();
   const hasSubmitted = submissions.some(s => publicKey && s.agent === publicKey.toString());
   const canSubmit = connected && task?.status === "open" && !isOwner && !hasSubmitted;
   const canSelectWinner = isOwner && task?.status === "open" && submissions.length > 0;
   const canChat = connected && (isOwner || hasSubmitted);
+
+  // Render message content (text, image, or video)
+  const renderMessageContent = (content: string) => {
+    const parsed = parseMessageContent(content);
+    
+    if (parsed.type === "image") {
+      return (
+        <img 
+          src={parsed.content} 
+          alt="Shared image" 
+          className="max-w-full max-h-64 rounded-lg cursor-pointer hover:opacity-90"
+          onClick={() => window.open(parsed.content, "_blank")}
+        />
+      );
+    }
+    
+    if (parsed.type === "video") {
+      if (parsed.content.includes("youtube.com") || parsed.content.includes("youtu.be")) {
+        // Extract YouTube video ID and embed
+        const videoId = parsed.content.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/)?.[1];
+        if (videoId) {
+          return (
+            <iframe
+              width="100%"
+              height="200"
+              src={`https://www.youtube.com/embed/${videoId}`}
+              className="rounded-lg"
+              allowFullScreen
+            />
+          );
+        }
+      }
+      return (
+        <video 
+          src={parsed.content} 
+          controls 
+          className="max-w-full max-h-64 rounded-lg"
+        />
+      );
+    }
+    
+    return <p className="break-words">{parsed.content}</p>;
+  };
 
   if (loading) {
     return (
@@ -213,7 +285,7 @@ export default function TaskDetailPage() {
           </div>
         </div>
 
-        {/* Submit Application Button/Form */}
+        {/* Submit Application */}
         {canSubmit && (
           <div className="bg-gray-800 rounded-xl p-6 mb-6">
             {!showSubmitForm ? (
@@ -378,7 +450,7 @@ export default function TaskDetailPage() {
                     const isClient = msg.sender === task.client;
                     return (
                       <div key={idx} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[70%] rounded-lg p-3 ${
+                        <div className={`max-w-[80%] rounded-lg p-3 ${
                           isMe 
                             ? "bg-purple-600 text-white" 
                             : isClient 
@@ -390,7 +462,7 @@ export default function TaskDetailPage() {
                               {isClient ? "👤 Client" : "🤖 Agent"}: {msg.sender.slice(0, 6)}...
                             </span>
                           </div>
-                          <p>{msg.content}</p>
+                          {renderMessageContent(msg.content)}
                           <p className="text-xs opacity-50 mt-1">
                             {msg.sentAt.toLocaleTimeString()}
                           </p>
@@ -405,23 +477,44 @@ export default function TaskDetailPage() {
 
             {/* Message Input */}
             {canChat ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                  placeholder="Type a message..."
-                  maxLength={500}
-                  className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={sendingMessage || !newMessage.trim()}
-                  className="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-500 disabled:opacity-50"
-                >
-                  {sendingMessage ? "..." : "Send"}
-                </button>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && !sendingMessage && handleSendMessage()}
+                    placeholder="Type a message..."
+                    maxLength={500}
+                    disabled={sendingMessage || uploading}
+                    className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-purple-500 disabled:opacity-50"
+                  />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept="image/*,video/*"
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sendingMessage || uploading}
+                    className="px-4 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50"
+                    title="Upload image/video"
+                  >
+                    {uploading ? "📤" : "🖼️"}
+                  </button>
+                  <button
+                    onClick={() => handleSendMessage()}
+                    disabled={sendingMessage || uploading || !newMessage.trim()}
+                    className="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-500 disabled:opacity-50"
+                  >
+                    {sendingMessage ? "..." : "Send"}
+                  </button>
+                </div>
+                <p className="text-gray-500 text-xs">
+                  📎 Supports: JPG, PNG, GIF, WebP, MP4, WebM (max 500KB) | YouTube links
+                </p>
               </div>
             ) : (
               <div className="bg-gray-700/50 rounded-lg p-4 text-center">
