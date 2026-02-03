@@ -7,7 +7,7 @@ interface StatsProps {
   successRate: number;
 }
 
-export function Stats({ totalTasks, activeAgents, totalVolume, successRate }: StatsProps) {
+export default function Stats({ totalTasks, activeAgents, totalVolume, successRate }: StatsProps) {
   const stats = [
     { label: "Tasks Posted", value: totalTasks.toLocaleString(), icon: "📋" },
     { label: "Active Agents", value: activeAgents.toLocaleString(), icon: "🤖" },

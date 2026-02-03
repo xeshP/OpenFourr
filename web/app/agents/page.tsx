@@ -1,10 +1,10 @@
 "use client";
 
-import { AgentCard } from "@/components/AgentCard";
+import AgentCard from "@/components/AgentCard";
 import { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@/components/WalletProvider";
-import { useProgram, Agent, getAgentPDA } from "@/lib/useProgram";
+import { useProgram, Agent } from "@/lib/useProgram";
 
 const skillFilters = ["All", "Web Development", "Research", "Smart Contracts", "Security", "Design", "Bots"];
 const skillOptions = ["Web Development", "Research", "Smart Contracts", "Security Audit", "Design", "Bots & Automation", "Data Analysis", "Writing", "Testing"];
@@ -37,7 +37,6 @@ export default function AgentsPage() {
         const data = await fetchAllAgents();
         setAgents(data);
         
-        // Check if current user has an agent profile
         if (publicKey) {
           const userAgent = data.find(a => a.owner === publicKey.toString());
           setMyAgent(userAgent || null);
@@ -55,7 +54,7 @@ export default function AgentsPage() {
       ...prev,
       skills: prev.skills.includes(skill)
         ? prev.skills.filter(s => s !== skill)
-        : [...prev.skills, skill].slice(0, 5), // Max 5 skills
+        : [...prev.skills, skill].slice(0, 5),
     }));
   };
 
@@ -78,7 +77,6 @@ export default function AgentsPage() {
       setSuccess(`Agent registered! TX: ${tx.slice(0, 20)}...`);
       setShowRegister(false);
       
-      // Reload agents
       const data = await fetchAllAgents();
       setAgents(data);
       const userAgent = data.find(a => a.owner === publicKey?.toString());
@@ -103,14 +101,10 @@ export default function AgentsPage() {
       const ratingB = b.ratingCount > 0 ? b.ratingSum / b.ratingCount : 0;
       
       switch (sortBy) {
-        case "rating":
-          return ratingB - ratingA;
-        case "completed":
-          return b.tasksCompleted - a.tasksCompleted;
-        case "earned":
-          return b.totalEarned - a.totalEarned;
-        default:
-          return 0;
+        case "rating": return ratingB - ratingA;
+        case "completed": return b.tasksCompleted - a.tasksCompleted;
+        case "earned": return b.totalEarned - a.totalEarned;
+        default: return 0;
       }
     });
 
@@ -263,7 +257,7 @@ export default function AgentsPage() {
               </div>
               
               <div className="bg-fiverr-background rounded-lg p-4 text-sm text-fiverr-gray">
-                <p>💡 Registration costs ~0.02 SOL for account rent. This is refundable when you close your profile.</p>
+                <p>💡 Registration costs ~0.02 SOL for account rent.</p>
               </div>
               
               <button
@@ -311,18 +305,7 @@ export default function AgentsPage() {
       ) : filteredAgents.length > 0 ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredAgents.map((agent) => (
-            <AgentCard key={agent.owner} agent={{
-              name: agent.name,
-              rating: agent.ratingCount > 0 ? agent.ratingSum / agent.ratingCount : 0,
-              tasksCompleted: agent.tasksCompleted,
-              skills: agent.skills,
-              totalEarned: agent.totalEarned,
-              successRate: agent.tasksCompleted + agent.tasksFailed > 0 
-                ? Math.round((agent.tasksCompleted / (agent.tasksCompleted + agent.tasksFailed)) * 100)
-                : 100,
-              level: agent.tasksCompleted >= 10 ? "Top Rated" : agent.tasksCompleted >= 5 ? "Level 2" : undefined,
-              reviews: agent.ratingCount,
-            }} />
+            <AgentCard key={agent.owner} agent={agent} />
           ))}
         </div>
       ) : (
@@ -338,7 +321,7 @@ export default function AgentsPage() {
             </button>
           ) : (
             <div>
-              <p className="text-sm text-fiverr-gray mb-4">Connect your wallet to register as an AI agent</p>
+              <p className="text-sm text-fiverr-gray mb-4">Connect your wallet to register</p>
               <WalletMultiButton className="!bg-fiverr-green hover:!bg-fiverr-green-dark !rounded !font-semibold" />
             </div>
           )}

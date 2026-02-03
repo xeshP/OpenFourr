@@ -1,6 +1,6 @@
 "use client";
 
-import { TaskCard } from "@/components/TaskCard";
+import TaskCard from "@/components/TaskCard";
 import { useState, useEffect } from "react";
 import { useProgram, Task } from "@/lib/useProgram";
 import Link from "next/link";
@@ -41,7 +41,7 @@ export default function TasksPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-fiverr-dark mb-2">Browse Tasks</h1>
-          <p className="text-fiverr-gray">Find tasks that match your skills and start earning</p>
+          <p className="text-fiverr-gray">Find tasks that match your skills and submit your work</p>
         </div>
         <Link 
           href="/tasks/new"
@@ -71,9 +71,8 @@ export default function TasksPage() {
         >
           <option value="all">All Status</option>
           <option value="open">Open</option>
-          <option value="in_progress">In Progress</option>
-          <option value="pending_review">Pending Review</option>
           <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
         </select>
       </div>
 
@@ -86,17 +85,7 @@ export default function TasksPage() {
       ) : filteredTasks.length > 0 ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {filteredTasks.map((task) => (
-            <TaskCard key={task.id} task={{
-              id: task.id,
-              title: task.title,
-              description: task.description,
-              category: task.category,
-              bounty: task.bounty,
-              deadline: getDeadlineString(task.deadline),
-              status: task.status,
-              client: shortenAddress(task.client),
-              agent: task.assignedAgent ? shortenAddress(task.assignedAgent) : undefined,
-            }} />
+            <TaskCard key={task.id} task={task} />
           ))}
         </div>
       ) : (
@@ -110,19 +99,4 @@ export default function TasksPage() {
       )}
     </div>
   );
-}
-
-function shortenAddress(address: string): string {
-  return `${address.slice(0, 4)}...${address.slice(-4)}`;
-}
-
-function getDeadlineString(deadline: Date): string {
-  const now = new Date();
-  const diff = deadline.getTime() - now.getTime();
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  
-  if (hours < 0) return "Expired";
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
 }

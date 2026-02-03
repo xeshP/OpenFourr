@@ -8,9 +8,10 @@ import Link from "next/link";
 
 export default function DashboardPage() {
   const { connected, publicKey } = useWallet();
-  const { fetchAllTasks, fetchAllAgents } = useProgram();
+  const { fetchAllTasks, fetchAllAgents, fetchTaskSubmissions } = useProgram();
   
-  const [myTasks, setMyTasks] = useState<Task[]>([]);
+  const [postedTasks, setPostedTasks] = useState<Task[]>([]);
+  const [mySubmissionTasks, setMySubmissionTasks] = useState<Task[]>([]);
   const [myAgent, setMyAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -25,12 +26,21 @@ export default function DashboardPage() {
           fetchAllAgents(),
         ]);
         
-        // Filter tasks where user is client or assigned agent
-        const userTasks = tasks.filter(t => 
-          t.client === publicKey.toString() || 
-          t.assignedAgent === publicKey.toString()
-        );
-        setMyTasks(userTasks);
+        // Tasks posted by user
+        const posted = tasks.filter(t => t.client === publicKey.toString());
+        setPostedTasks(posted);
+        
+        // Find tasks where user has submitted
+        const submittedTasks: Task[] = [];
+        for (const task of tasks) {
+          if (task.client !== publicKey.toString()) {
+            const submissions = await fetchTaskSubmissions(task.id);
+            if (submissions.some(s => s.agent === publicKey.toString())) {
+              submittedTasks.push(task);
+            }
+          }
+        }
+        setMySubmissionTasks(submittedTasks);
         
         // Find user's agent profile
         const userAgent = agents.find(a => a.owner === publicKey.toString());
@@ -43,7 +53,7 @@ export default function DashboardPage() {
     }
     
     loadData();
-  }, [publicKey, fetchAllTasks, fetchAllAgents]);
+  }, [publicKey, fetchAllTasks, fetchAllAgents, fetchTaskSubmissions]);
 
   if (!connected) {
     return (
@@ -59,13 +69,12 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  const postedTasks = myTasks.filter(t => t.client === publicKey?.toString());
-  const claimedTasks = myTasks.filter(t => t.assignedAgent === publicKey?.toString());
   
   const totalSpent = postedTasks
     .filter(t => t.status === "completed")
     .reduce((sum, t) => sum + t.bounty, 0);
+
+  const allMyTasks = [...postedTasks, ...mySubmissionTasks];
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -85,7 +94,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {[
               { label: "Tasks Posted", value: postedTasks.length.toString(), icon: "📋", color: "text-fiverr-dark" },
-              { label: "Tasks Claimed", value: claimedTasks.length.toString(), icon: "🤖", color: "text-blue-500" },
+              { label: "My Submissions", value: mySubmissionTasks.length.toString(), icon: "🚀", color: "text-blue-500" },
               { label: "Total Spent", value: `${totalSpent.toFixed(2)} SOL`, icon: "💸", color: "text-red-500" },
               { label: "Total Earned", value: myAgent ? `${myAgent.totalEarned.toFixed(2)} SOL` : "0 SOL", icon: "💰", color: "text-fiverr-green" },
             ].map((stat) => (
@@ -139,37 +148,42 @@ export default function DashboardPage() {
 
           {/* My Tasks */}
           <div className="bg-white border border-fiverr-border rounded-xl p-6 mb-8">
-            <h2 className="text-xl font-bold text-fiverr-dark mb-4">My Tasks</h2>
+            <h2 className="text-xl font-bold text-fiverr-dark mb-4">My Tasks & Submissions</h2>
             
-            {myTasks.length > 0 ? (
+            {allMyTasks.length > 0 ? (
               <div className="space-y-1">
-                {myTasks.slice(0, 10).map((task) => (
-                  <div key={task.id} className="flex items-center justify-between py-4 border-b border-fiverr-border last:border-0">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        task.status === "completed" ? "bg-green-50 text-green-600" :
-                        task.status === "open" ? "bg-blue-50 text-blue-600" :
-                        task.status === "in_progress" ? "bg-amber-50 text-amber-600" :
-                        "bg-gray-50 text-gray-600"
-                      }`}>
-                        {task.status === "completed" ? "✅" :
-                         task.status === "open" ? "📋" :
-                         task.status === "in_progress" ? "⏳" : "📝"}
-                      </div>
-                      <div>
-                        <div className="font-medium text-fiverr-dark">{task.title}</div>
-                        <div className="text-sm text-fiverr-gray">
-                          {task.client === publicKey?.toString() ? "Posted by you" : "Claimed by you"} · {task.status.replace("_", " ")}
+                {allMyTasks.slice(0, 10).map((task) => {
+                  const isPostedByMe = task.client === publicKey?.toString();
+                  return (
+                    <Link key={task.id} href={`/tasks/${task.id}`}>
+                      <div className="flex items-center justify-between py-4 border-b border-fiverr-border last:border-0 hover:bg-gray-50 cursor-pointer">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            task.status === "completed" ? "bg-green-50 text-green-600" :
+                            task.status === "open" ? "bg-blue-50 text-blue-600" :
+                            task.status === "in_progress" ? "bg-amber-50 text-amber-600" :
+                            "bg-gray-50 text-gray-600"
+                          }`}>
+                            {task.status === "completed" ? "✅" :
+                            task.status === "open" ? "📋" :
+                            task.status === "in_progress" ? "⏳" : "📝"}
+                          </div>
+                          <div>
+                            <div className="font-medium text-fiverr-dark">{task.title}</div>
+                            <div className="text-sm text-fiverr-gray">
+                              {isPostedByMe ? "Posted by you" : "You submitted"} · {task.status.replace("_", " ")} · {task.submissionCount} submissions
+                            </div>
+                          </div>
                         </div>
+                        <div className="font-bold text-fiverr-dark">{task.bounty.toFixed(2)} SOL</div>
                       </div>
-                    </div>
-                    <div className="font-bold text-fiverr-dark">{task.bounty.toFixed(2)} SOL</div>
-                  </div>
-                ))}
+                    </Link>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8 text-fiverr-gray">
-                <p>No tasks yet. Post your first task or claim one as an agent!</p>
+                <p>No tasks yet. Post your first task or submit work as an agent!</p>
               </div>
             )}
           </div>
