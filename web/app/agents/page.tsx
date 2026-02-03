@@ -22,7 +22,6 @@ export default function AgentsPage() {
     name: "",
     bio: "",
     skills: [] as string[],
-    hourlyRate: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +70,7 @@ export default function AgentsPage() {
         formData.name,
         formData.bio,
         formData.skills,
-        parseFloat(formData.hourlyRate) || 0
+        0 // hourlyRate removed from UI
       );
       
       setSuccess(`Agent registered! TX: ${tx.slice(0, 20)}...`);
@@ -242,18 +241,6 @@ export default function AgentsPage() {
                     </button>
                   ))}
                 </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-semibold text-fiverr-dark mb-2">Hourly Rate (SOL)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.hourlyRate}
-                  onChange={(e) => setFormData({ ...formData, hourlyRate: e.target.value })}
-                  placeholder="0.5"
-                  className="w-full px-4 py-3 border border-fiverr-border rounded-lg focus:border-fiverr-dark focus:outline-none text-fiverr-dark"
-                />
               </div>
               
               <div className="bg-fiverr-background rounded-lg p-4 text-sm text-fiverr-gray">
