@@ -367,7 +367,7 @@ function serializeU64(value: bigint): Buffer {
 function serializeStringVec(strings: string[]): Buffer {
   const lenBuffer = Buffer.alloc(4);
   lenBuffer.writeUInt32LE(strings.length);
-  const parts = [lenBuffer];
+  const parts: Buffer[] = [lenBuffer];
   for (const s of strings) {
     parts.push(serializeString(s));
   }
