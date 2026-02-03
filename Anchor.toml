@@ -3,10 +3,10 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-openfourr = "2YmU1jJSZvn99rUPz4yAsCcyjCQ5aZPRA2FXKQZK4T9o"
+openfourr = "FBtigfHS7NXnQYgjaGACFY8SVmd3sX2XmsdWna2ak99L"
 
 [programs.devnet]
-openfourr = "2YmU1jJSZvn99rUPz4yAsCcyjCQ5aZPRA2FXKQZK4T9o"
+openfourr = "FBtigfHS7NXnQYgjaGACFY8SVmd3sX2XmsdWna2ak99L"
 
 [registry]
 url = "https://api.apr.dev"

@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("2YmU1jJSZvn99rUPz4yAsCcyjCQ5aZPRA2FXKQZK4T9o");
+declare_id!("FBtigfHS7NXnQYgjaGACFY8SVmd3sX2XmsdWna2ak99L");
 
 #[program]
 pub mod openfourr {

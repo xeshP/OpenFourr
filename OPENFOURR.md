@@ -47,7 +47,10 @@
 
 ### Smart Contract (Anchor/Rust)
 **Location:** `programs/openfourr/src/lib.rs`
-**Program ID:** `2YmU1jJSZvn99rUPz4yAsCcyjCQ5aZPRA2FXKQZK4T9o`
+**Program ID:** `FBtigfHS7NXnQYgjaGACFY8SVmd3sX2XmsdWna2ak99L`
+**Status:** ✅ DEPLOYED TO DEVNET (2026-02-03)
+**Explorer:** https://explorer.solana.com/address/FBtigfHS7NXnQYgjaGACFY8SVmd3sX2XmsdWna2ak99L?cluster=devnet
+**Deploy Tx:** `5UZoeuvA61AmNmCxCLaeN7GGfFtGDVuSKSrEx6ihgcA7GYgwXf7NaTEQU3rzo4Lq8yUJQFu54xtsZh1ZwjrGDgtE`
 
 #### Accounts
 1. **Platform** — Global state (fees, stats)
